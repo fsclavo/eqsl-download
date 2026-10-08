@@ -87,7 +87,7 @@ For each unique QSO filename:
 | **corrupt** | Present but fails structural check → re-download |
 | **missing** | Absent or empty → download |
 
-Validation walks JPEG markers (SOI → SOS → EOI) without Pillow.
+Validation accepts **JPEG** (SOI → SOS → EOI, trailing padding allowed) and **PNG** (signature + IEND). eQSL’s GeteQSL API often serves PNG even when the local filename ends in `.jpg`.
 
 ### 4. Card download
 
@@ -95,7 +95,7 @@ Validation walks JPEG markers (SOI → SOS → EOI) without Pillow.
 
 - Delay between GeteQSL calls: **11 s** (~5.4/min; under the official 6/min cap).
 - On *“Throttling invoked”*: wait **20 s** and retry (up to 2 attempts).
-- Post-download JPEG validation; invalid files are deleted and counted as failures.
+- Post-download image validation (JPEG/PNG); invalid files are deleted and counted as failures (error includes detected kind + magic bytes).
 
 ## Output filenames
 

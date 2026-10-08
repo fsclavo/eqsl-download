@@ -3,6 +3,7 @@
 
 Uses the official DownloadInBox + GeteQSL API. Skips files that already
 exist in the project root. Rate-limits GeteQSL to under 6 requests/minute.
+Accepts JPEG or PNG payloads (GeteQSL often serves .PNG).
 """
 
 from __future__ import annotations
@@ -94,7 +95,10 @@ def sanitize_call(call: str) -> str:
 
 
 def _is_valid_jpeg_bytes(data: bytes) -> bool:
-    """Structural JPEG check: SOI, parse markers, require EOI (no Pillow)."""
+    """Structural JPEG check: SOI, parse markers, require EOI (no Pillow).
+
+    Trailing bytes after EOI are allowed — some encoders/servers pad the file.
+    """
     if len(data) < 4 or data[0:2] != b"\xff\xd8":
         return False
 
@@ -113,9 +117,9 @@ def _is_valid_jpeg_bytes(data: bytes) -> bool:
         marker = data[i]
         i += 1
 
-        # EOI
+        # EOI — accept even if a few trailing bytes follow
         if marker == 0xD9:
-            return saw_sos and i == n
+            return saw_sos
 
         # Standalone markers without length
         if marker in (0x01, 0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7):
@@ -163,15 +167,51 @@ def _is_valid_jpeg_bytes(data: bytes) -> bool:
     return False
 
 
+def _is_valid_png_bytes(data: bytes) -> bool:
+    """Lightweight PNG check: signature + IEND chunk present."""
+    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+        return False
+    # IEND is the last chunk: length=0, type=IEND, + CRC
+    return b"IEND" in data[-16:]
+
+
+def detect_image_kind(data: bytes) -> str:
+    """Return jpeg|png|gif|webp|html|empty|unknown for diagnostics."""
+    if not data:
+        return "empty"
+    if data[:3] == b"\xff\xd8\xff":
+        return "jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    head = data.lstrip()[:64].lower()
+    if head.startswith(b"<!doctype") or head.startswith(b"<html") or head.startswith(b"<"):
+        return "html"
+    return "unknown"
+
+
+def _is_valid_image_bytes(data: bytes) -> bool:
+    """eQSL GeteQSL often serves PNG (URL ends in .PNG); also accept JPEG."""
+    kind = detect_image_kind(data)
+    if kind == "jpeg":
+        return _is_valid_jpeg_bytes(data)
+    if kind == "png":
+        return _is_valid_png_bytes(data)
+    return False
+
+
 def is_valid_jpeg(path: Path) -> bool:
-    """Structural JPEG validation (eQSL card graphics)."""
+    """Valid eQSL card graphic (JPEG or PNG). Name kept for call-site stability."""
     try:
         data = path.read_bytes()
     except OSError:
         return False
     if not data:
         return False
-    return _is_valid_jpeg_bytes(data)
+    return _is_valid_image_bytes(data)
 
 
 def classify_local_file(name: str, qso: QSO) -> tuple[str, str, QSO]:
@@ -239,7 +279,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--validate-only",
         action="store_true",
-        help="Validate local JPGs only (no login, no download). Dates optional.",
+        help="Validate local card images only (no login, no download). Dates optional.",
     )
     p.add_argument(
         "--workers",
@@ -316,7 +356,7 @@ def validate_local_paths(
         print("  no hay archivos .jpg para validar")
         return 0, 0, []
 
-    print(f"  validando JPEG estructural ({workers} procesos) ...")
+    print(f"  validando imagen (JPEG/PNG, {workers} procesos) ...")
     bar = ProgressBar(total)
     ok = 0
     corrupt = 0
@@ -555,7 +595,7 @@ def scan_local_qsos(
     missing_names: list[str] = []
 
     print(f"[3/4] Escaneando directorio local ({OUT_DIR.name}/) ...")
-    print(f"  validando JPEG estructural ({workers} procesos) ...")
+    print(f"  validando imagen (JPEG/PNG, {workers} procesos) ...")
     bar = ProgressBar(total)
     done = 0
 
@@ -666,7 +706,15 @@ def main() -> int:
 
         if ok and not is_valid_jpeg(path):
             ok = False
-            msg = "Downloaded file failed JPEG validation"
+            try:
+                raw = path.read_bytes()
+                kind = detect_image_kind(raw)
+                msg = (
+                    f"Downloaded file failed image validation "
+                    f"(kind={kind}, size={len(raw)}, magic={raw[:8].hex()})"
+                )
+            except OSError:
+                msg = "Downloaded file failed image validation (unreadable)"
             try:
                 path.unlink(missing_ok=True)
             except OSError:
