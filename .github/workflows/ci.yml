@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: python -m pip install ruff
+      - name: Run ruff
+        run: ruff check .
+
+  test:
+    name: Tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Run tests
+        run: >
+          python -m pytest -m "not gui"
+          --cov=eqsl_core --cov-report=term-missing --cov-fail-under=80
+
+  gui:
+    name: GUI smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tkinter and xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk xvfb
+      - name: Create venv exposing system tkinter
+        run: python3 -m venv --system-site-packages .venv-gui
+      - name: Install dependencies
+        run: .venv-gui/bin/pip install -r requirements-dev.txt
+      - name: Run GUI smoke tests
+        run: xvfb-run -a .venv-gui/bin/python -m pytest tests/test_gui_smoke.py -m gui
+
+  package:
+    name: Build AppImage
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y desktop-file-utils file
+      - name: Build AppImage
+        run: bash packaging/linux/build_appimage.sh
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage-ci
+          path: Releases/*.AppImage
+          if-no-files-found: error

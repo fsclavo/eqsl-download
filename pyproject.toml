@@ -1,0 +1,30 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "gui: smoke tests that need a display (X11/xvfb) and tkinter",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["eqsl_core"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+extend-exclude = ["build", "dist", "Releases", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

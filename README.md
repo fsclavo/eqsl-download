@@ -131,7 +131,8 @@ packaging/
   make_icons.py         # regenerates assets/
   linux/                # AppRun, .desktop, build_appimage.sh
   windows/              # eqsl_win.spec (PyInstaller), installer.iss (Inno Setup)
-.github/workflows/      # release pipeline (Linux + Windows on tag push)
+tests/                  # pytest suite (unit + HTTP mocks + GUI smoke)
+.github/workflows/      # ci.yml (lint/tests) and release.yml (tag -> artifacts)
 Releases/               # built artifacts land here (binaries are git-ignored)
 ```
 
@@ -139,6 +140,25 @@ Releases/               # built artifacts land here (binaries are git-ignored)
 optional `log`/`progress` callbacks, which is what lets the CLI and GUI share
 it. Local image checks run through a `ProcessPoolExecutor` using the `spawn`
 context (required for frozen builds and safe when the GUI forks from a thread).
+
+## Testing
+
+QA runs on every push/PR via `.github/workflows/ci.yml` (lint + tests on Python
+3.9–3.12 + a GUI smoke test under `xvfb` + an AppImage build check). Locally:
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+ruff check .                                   # lint
+pytest                                         # all tests
+pytest -m "not gui" --cov=eqsl_core            # tests + coverage
+xvfb-run -a pytest tests/test_gui_smoke.py     # GUI smoke (needs a display)
+```
+
+The suite never touches the network: HTTP is mocked with `requests-mock`. Tests
+include the ADIF parser, the `QSO` model, structural JPEG/PNG validation, local
+file classification/scanning, the download pipeline (success, throttling,
+errors), the CLI argument handling and exit codes, and GUI startup. CI enforces
+a minimum coverage on `eqsl_core` (80%).
 
 ## Building releases
 

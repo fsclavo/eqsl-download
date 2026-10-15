@@ -5,6 +5,12 @@ venv/
 .env
 *.log
 
+# Tests / QA
+.pytest_cache/
+.coverage
+htmlcov/
+.venv-gui/
+
 # Build output
 build/
 dist/

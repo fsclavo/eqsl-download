@@ -1,0 +1,8 @@
+# Development / QA dependencies (not needed to run the app).
+-r requirements.txt
+
+pytest>=7.4
+pytest-cov>=4.1
+requests-mock>=1.11
+pillow>=9.5
+ruff>=0.4

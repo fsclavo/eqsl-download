@@ -36,7 +36,9 @@ def _font(size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
-def _vertical_gradient(size: int, top: tuple[int, int, int], bottom: tuple[int, int, int]) -> Image.Image:
+def _vertical_gradient(
+    size: int, top: tuple[int, int, int], bottom: tuple[int, int, int]
+) -> Image.Image:
     img = Image.new("RGB", (size, size), top)
     draw = ImageDraw.Draw(img)
     for y in range(size):
@@ -86,7 +88,7 @@ def render(size: int) -> Image.Image:
     )
 
     # Radio waves top-left
-    for i, r in enumerate((16, 27, 38)):
+    for r in (16, 27, 38):
         bbox = [
             int((22 - r) * scale), int((30 - r) * scale),
             int((22 + r) * scale), int((30 + r) * scale),

@@ -123,7 +123,9 @@ class EQSLCardGUI:
         self.callsign_var = tk.StringVar()
         ttk.Entry(cred, textvariable=self.callsign_var).grid(row=0, column=1, sticky="ew")
 
-        ttk.Label(cred, text="Contraseña:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(6, 0))
+        ttk.Label(cred, text="Contraseña:").grid(
+            row=1, column=0, sticky="w", padx=(0, 8), pady=(6, 0)
+        )
         self.password_var = tk.StringVar()
         self.show_pass_var = tk.BooleanVar(value=False)
         pass_frame = ttk.Frame(cred)
@@ -140,7 +142,9 @@ class EQSLCardGUI:
             command=self._toggle_password,
         ).grid(row=0, column=1, padx=(6, 0))
 
-        ttk.Label(cred, text="QTH (opcional):").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=(6, 0))
+        ttk.Label(cred, text="QTH (opcional):").grid(
+            row=2, column=0, sticky="w", padx=(0, 8), pady=(6, 0)
+        )
         self.qth_var = tk.StringVar()
         ttk.Entry(cred, textvariable=self.qth_var).grid(row=2, column=1, sticky="ew", pady=(6, 0))
 
