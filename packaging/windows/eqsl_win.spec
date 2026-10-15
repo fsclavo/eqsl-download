@@ -1,9 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for eQSL Gráfico (Windows, onedir).
+"""PyInstaller spec for eQSL Card Downloader (Windows, onedir).
 
 Build from the repository root with:
     pyinstaller packaging/windows/eqsl_win.spec --noconfirm --clean
-Output goes to  dist/eQSL_Grafico/  next to eQSL_Grafico.exe.
+Output goes to  dist/eQSL_Card_Downloader/  next to eQSL_Card_Downloader.exe.
 """
 
 import os
@@ -39,11 +39,11 @@ VERSION_INFO = f"""VSVersionInfo(
     StringFileInfo([
       StringTable('040a04b0', [
         StringStruct('CompanyName', 'fsclavo'),
-        StringStruct('FileDescription', 'eQSL Gr\u00e1fico'),
+        StringStruct('FileDescription', 'eQSL Card Downloader'),
         StringStruct('FileVersion', '{_ver_str}'),
-        StringStruct('InternalName', 'eQSL_Grafico'),
-        StringStruct('OriginalFilename', 'eQSL_Grafico.exe'),
-        StringStruct('ProductName', 'eQSL Gr\u00e1fico'),
+        StringStruct('InternalName', 'eQSL_Card_Downloader'),
+        StringStruct('OriginalFilename', 'eQSL_Card_Downloader.exe'),
+        StringStruct('ProductName', 'eQSL Card Downloader'),
         StringStruct('ProductVersion', '{_ver_str}')
       ])
     ]),
@@ -61,9 +61,9 @@ a = Analysis(  # noqa: F821
     pathex=[str(ROOT)],
     binaries=[],
     datas=[
-        (str(ASSETS / "eqsl-grafico.png"), "assets"),
-        (str(ASSETS / "eqsl-grafico-512.png"), "assets"),
-        (str(ASSETS / "eqsl-grafico.ico"), "assets"),
+        (str(ASSETS / "eqsl-card-downloader.png"), "assets"),
+        (str(ASSETS / "eqsl-card-downloader-512.png"), "assets"),
+        (str(ASSETS / "eqsl-card-downloader.ico"), "assets"),
         (str(ROOT / "VERSION"), "."),
     ],
     hiddenimports=[
@@ -85,7 +85,7 @@ exe = EXE(  # noqa: F821
     a.scripts,
     [],
     exclude_binaries=True,
-    name="eQSL_Grafico",
+    name="eQSL_Card_Downloader",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -96,7 +96,7 @@ exe = EXE(  # noqa: F821
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(ASSETS / "eqsl-grafico.ico"),
+    icon=str(ASSETS / "eqsl-card-downloader.ico"),
     version=str(_vi_path),
 )
 
@@ -107,5 +107,5 @@ coll = COLLECT(  # noqa: F821
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="eQSL_Grafico",
+    name="eQSL_Card_Downloader",
 )

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Generate the app icons (PNG + ICO) for eQSL Gráfico.
+"""Generate the app icons (PNG + ICO) for eQSL Card Downloader.
 
 Run from anywhere:  python3 packaging/make_icons.py
 
 Produces:
-    assets/eqsl-grafico.png       256x256 app icon (AppImage / GUI window)
-    assets/eqsl-grafico-512.png   512x512 hi-res
-    assets/eqsl-grafico.ico       multi-size Windows icon
+    assets/eqsl-card-downloader.png       256x256 app icon (AppImage / GUI window)
+    assets/eqsl-card-downloader-512.png   512x512 hi-res
+    assets/eqsl-card-downloader.ico       multi-size Windows icon
 """
 
 from __future__ import annotations
@@ -109,11 +109,11 @@ def main() -> int:
     ASSETS.mkdir(parents=True, exist_ok=True)
 
     icon256 = render(256)
-    icon256.save(ASSETS / "eqsl-grafico.png")
-    render(512).save(ASSETS / "eqsl-grafico-512.png")
+    icon256.save(ASSETS / "eqsl-card-downloader.png")
+    render(512).save(ASSETS / "eqsl-card-downloader-512.png")
 
     sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
-    icon256.save(ASSETS / "eqsl-grafico.ico", sizes=sizes)
+    icon256.save(ASSETS / "eqsl-card-downloader.ico", sizes=sizes)
 
     print("Icons written to", ASSETS)
     return 0

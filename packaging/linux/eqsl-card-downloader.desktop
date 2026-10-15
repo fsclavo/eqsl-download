@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=eQSL Card Downloader
+GenericName=eQSL card downloader
+Comment=Download your eQSL.cc QSL cards as images
+Exec=eqsl-card-downloader
+Icon=eqsl-card-downloader
+Terminal=false
+Categories=Network;FileTransfer;
+Keywords=eqsl;qsl;hamradio;radio;amateur;
+StartupWMClass=eQSL-Card-Downloader

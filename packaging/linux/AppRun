@@ -1,4 +1,4 @@
 #!/bin/sh
 # AppImage entry point: launch the bundled PyInstaller binary.
 HERE="$(dirname "$(readlink -f "$0")")"
-exec "$HERE/usr/bin/eqsl-grafico" "$@"
+exec "$HERE/usr/bin/eqsl-card-downloader" "$@"

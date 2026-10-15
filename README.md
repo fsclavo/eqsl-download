@@ -1,4 +1,4 @@
-# eQSL card downloader / eQSL Gráfico
+# eQSL Card Downloader
 
 Personal toolkit that downloads [eQSL.cc](https://www.eqsl.cc) QSL card images
 for a QSO date range, using the official **DownloadInBox** and **GeteQSL**
@@ -10,7 +10,7 @@ It ships in three shapes, all backed by the same core:
 | Entry point | Description |
 |-------------|-------------|
 | `eqsl_download.py` | Command-line tool |
-| `eqsl_gui.py` | Tkinter desktop app (**eQSL Gráfico**) |
+| `eqsl_gui.py` | Tkinter desktop app (**eQSL Card Downloader**) |
 | `Releases/*.AppImage` / `*_Setup.exe` | Prebuilt graphical releases |
 
 ## Requirements
@@ -39,7 +39,7 @@ logging in.
 The bundled binary can still act as the CLI, e.g.:
 
 ```bash
-eqsl-grafico --validate-only --dest ~/tarjetas
+eqsl-card-downloader --validate-only --dest ~/tarjetas
 ```
 
 ## Command line
@@ -124,7 +124,7 @@ Callsigns are uppercased; `/` and `\` become `_`.
 ```
 eqsl_core.py            # shared logic (no UI): ADIF, validation, HTTP, scan
 eqsl_download.py        # CLI front-end
-eqsl_gui.py             # Tkinter GUI front-end (eQSL Gráfico)
+eqsl_gui.py             # Tkinter GUI front-end (eQSL Card Downloader)
 VERSION                 # single source of truth for the version
 assets/                 # generated app icons (PNG + ICO)
 packaging/

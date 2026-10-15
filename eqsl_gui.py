@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""eQSL Gráfico — graphical front-end for the eQSL.cc card downloader.
+"""eQSL Card Downloader — graphical front-end for the eQSL.cc card downloader.
 
 Tkinter GUI sharing all logic with the CLI via :mod:`eqsl_core`. Runs the
 network work in a background thread so the window stays responsive, and reports
@@ -38,7 +38,7 @@ from eqsl_core import (
     validate_local_paths,
 )
 
-APP_NAME = "eQSL Gráfico"
+APP_NAME = "eQSL Card Downloader"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -64,7 +64,7 @@ APP_VERSION = _read_version()
 def _default_dest() -> Path:
     """A writable default folder in the user's home directory."""
     home = Path.home()
-    for candidate in (home / "eQSL-Grafico", home):
+    for candidate in (home / "eQSL-Card-Downloader", home):
         try:
             candidate.mkdir(parents=True, exist_ok=True)
             return candidate
@@ -232,7 +232,7 @@ class EQSLCardGUI:
         self._update_date_mode()
 
     def _set_icon(self) -> None:
-        for name in ("eqsl-grafico.png", "icon.png"):
+        for name in ("eqsl-card-downloader.png", "icon.png"):
             icon_path = _resource_path(os.path.join("assets", name))
             if icon_path.is_file():
                 try:
@@ -538,13 +538,13 @@ class EQSLCardGUI:
 
 def main() -> int:
     # Allow the bundled binary to double as the command-line tool, e.g.:
-    #   eQSL_Grafico --validate-only --dest ~/tarjetas
+    #   eQSL_Card_Downloader --validate-only --dest ~/tarjetas
     if len(sys.argv) > 1:
         from eqsl_download import main as cli_main
 
         return cli_main()
 
-    root = tk.Tk(className="eQSL-Grafico")
+    root = tk.Tk(className="eQSL-Card-Downloader")
     EQSLCardGUI(root)
     root.mainloop()
     return 0

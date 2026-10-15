@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build a Linux AppImage for eQSL Gráfico.
+# Build a Linux AppImage for eQSL Card Downloader.
 #
 # Dependencies (PyInstaller, Pillow) are installed into a throwaway virtualenv
 # under build/, so the system Python is never touched. appimagetool is used
@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$ROOT"
 
-APP="eqsl-grafico"
+APP="eqsl-card-downloader"
 ARCH="${ARCH:-x86_64}"
 VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION" 2>/dev/null || echo 0.0.0)"
 
