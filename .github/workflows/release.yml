@@ -16,6 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve version from tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "${GITHUB_REF_NAME#v}" > VERSION
+          fi
+          echo "Build version: $(cat VERSION)"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -40,6 +48,14 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "${GITHUB_REF_NAME#v}" > VERSION
+          fi
+          echo "Build version: $(cat VERSION)"
 
       - uses: actions/setup-python@v5
         with:
