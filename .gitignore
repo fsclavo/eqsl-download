@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+*.log
+
+# Build output
+build/
+dist/
+
+# Release artifacts (keep the folder, not the binaries)
+Releases/*
+!Releases/.gitkeep
