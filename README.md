@@ -1,5 +1,8 @@
 # eQSL Card Downloader
 
+[![CI](https://github.com/fsclavo/eqsl-download/actions/workflows/ci.yml/badge.svg)](https://github.com/fsclavo/eqsl-download/actions/workflows/ci.yml)
+[![Release](https://github.com/fsclavo/eqsl-download/actions/workflows/release.yml/badge.svg)](https://github.com/fsclavo/eqsl-download/actions/workflows/release.yml)
+
 Personal toolkit that downloads [eQSL.cc](https://www.eqsl.cc) QSL card images
 for a QSO date range, using the official **DownloadInBox** and **GeteQSL**
 endpoints. It skips valid local files, re-downloads corrupt ones, and
