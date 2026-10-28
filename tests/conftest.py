@@ -14,8 +14,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+for extra in (ROOT, ROOT / "packaging"):
+    if str(extra) not in sys.path:
+        sys.path.insert(0, str(extra))
 
 
 def _image_bytes(fmt: str, size: tuple[int, int] = (200, 200)) -> bytes:

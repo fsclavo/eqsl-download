@@ -18,6 +18,7 @@ ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$ROOT"
 
 APP="eqsl-card-downloader"
+DESKTOP_ID="io.github.fsclavo.EQSL-Card-Downloader"
 ARCH="${ARCH:-x86_64}"
 VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION" 2>/dev/null || echo 0.0.0)"
 
@@ -75,10 +76,21 @@ mkdir -p \
 cp -a "$DIST/$APP/." "$APPDIR/usr/bin/"
 cp "$SCRIPT_DIR/AppRun" "$APPDIR/AppRun"
 chmod +x "$APPDIR/AppRun"
-cp "$SCRIPT_DIR/$APP.desktop" "$APPDIR/$APP.desktop"
-cp "$SCRIPT_DIR/$APP.desktop" "$APPDIR/usr/share/applications/$APP.desktop"
+cp "$SCRIPT_DIR/$DESKTOP_ID.desktop" "$APPDIR/$DESKTOP_ID.desktop"
+cp "$SCRIPT_DIR/$DESKTOP_ID.desktop" "$APPDIR/usr/share/applications/$DESKTOP_ID.desktop"
 cp "$ROOT/assets/$APP.png" "$APPDIR/$APP.png"
 cp "$ROOT/assets/$APP.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/$APP.png"
+
+# AppStream metadata (with the current version/date). Provide both suffixes:
+# modern tools look for .metainfo.xml, some older ones for .appdata.xml.
+METAINFO_TEMPLATE="$SCRIPT_DIR/$APP.metainfo.xml.in"
+if [ -f "$METAINFO_TEMPLATE" ]; then
+  mkdir -p "$APPDIR/usr/share/metainfo"
+  for ext in metainfo appdata; do
+    sed -e "s/@VERSION@/${VERSION}/" -e "s/@DATE@/$(date +%Y-%m-%d)/" \
+      "$METAINFO_TEMPLATE" > "$APPDIR/usr/share/metainfo/$DESKTOP_ID.$ext.xml"
+  done
+fi
 
 # --- appimagetool ---
 TOOL="${APPIMAGETOOL:-}"

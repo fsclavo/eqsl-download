@@ -113,15 +113,23 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
+      - name: Collect artifacts and generate checksums
+        run: |
+          mkdir -p upload
+          find artifacts -type f \( -name '*.AppImage' -o -name '*.exe' \) -exec cp {} upload/ \;
+          python3 packaging/make_checksums.py upload
+
       - name: Show collected artifacts
-        run: ls -R artifacts
+        run: ls -R upload
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*
+          files: upload/*
           generate_release_notes: true

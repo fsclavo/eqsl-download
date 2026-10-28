@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.fsclavo.EQSL-Card-Downloader</id>
+  <name>eQSL Card Downloader</name>
+  <summary>Download your eQSL.cc QSL cards as images</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <developer id="io.github.fsclavo">
+    <name>fsclavo</name>
+  </developer>
+  <project_license>Apache-2.0</project_license>
+  <description>
+    <p>
+      Downloads eQSL.cc QSL card images for a QSO date range. It skips files
+      that are already present and valid, re-downloads corrupt ones, and
+      rate-limits requests to stay within eQSL's limits.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.fsclavo.EQSL-Card-Downloader.desktop</launchable>
+  <url type="homepage">https://github.com/fsclavo/eqsl-download</url>
+  <categories>
+    <category>Network</category>
+    <category>FileTransfer</category>
+  </categories>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

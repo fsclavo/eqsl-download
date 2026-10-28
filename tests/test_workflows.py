@@ -42,3 +42,21 @@ def test_version_is_semi_semver():
     parts = version.split(".")
     assert len(parts) == 3
     assert all(p.isdigit() for p in parts)
+
+
+def test_dependabot_config():
+    data = yaml.safe_load(
+        (WORKFLOWS.parent / "dependabot.yml").read_text(encoding="utf-8")
+    )
+    assert data["version"] == 2
+    ecosystems = {update["package-ecosystem"] for update in data["updates"]}
+    assert {"github-actions", "pip"}.issubset(ecosystems)
+
+
+def test_appstream_metainfo_template():
+    root = WORKFLOWS.parents[1]
+    template = root / "packaging" / "linux" / "eqsl-card-downloader.metainfo.xml.in"
+    text = template.read_text(encoding="utf-8")
+    assert "@VERSION@" in text
+    assert "@DATE@" in text
+    assert "io.github.fsclavo.EQSL-Card-Downloader.desktop" in text

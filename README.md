@@ -194,7 +194,12 @@ git tag v1.0.0 && git push origin v1.0.0
 ```
 
 The workflow builds the AppImage and the Windows `Setup.exe`, then attaches
-both to the GitHub Release.
+both to the GitHub Release together with a `SHA256SUMS` file. To verify a
+download:
+
+```bash
+sha256sum -c SHA256SUMS
+```
 
 Local Linux build:
 
