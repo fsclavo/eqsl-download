@@ -11,6 +11,7 @@ import eqsl_core
 from eqsl_core import (
     DOWNLOAD_INBOX,
     GET_EQSL,
+    EQSLAuthError,
     EQSLError,
     QSO,
     download_card,
@@ -56,6 +57,34 @@ def test_fetch_inbox_adif_missing_link(requests_mock):
         fetch_inbox_adif(
             make_session(), "user", "pass", "", date(2024, 1, 1), date(2024, 12, 31)
         )
+
+
+def test_fetch_inbox_adif_bad_credentials_is_friendly(requests_mock):
+    requests_mock.get(
+        DOWNLOAD_INBOX,
+        text="<html><body><h2>Invalid UserName or Password</h2></body></html>",
+    )
+    with pytest.raises(EQSLAuthError) as excinfo:
+        fetch_inbox_adif(
+            make_session(), "user", "wrong", "", date(2024, 1, 1), date(2024, 12, 31)
+        )
+    message = str(excinfo.value)
+    assert "Login failed" in message
+    assert "<" not in message
+
+
+def test_fetch_inbox_adif_unknown_failure_hides_html(requests_mock):
+    requests_mock.get(
+        DOWNLOAD_INBOX,
+        text="<html><body><p>An unexpected server condition</p></body></html>",
+    )
+    with pytest.raises(EQSLError) as excinfo:
+        fetch_inbox_adif(
+            make_session(), "user", "pass", "", date(2024, 1, 1), date(2024, 12, 31)
+        )
+    message = str(excinfo.value)
+    assert "An unexpected server condition" in message
+    assert "<" not in message
 
 
 def test_extract_image_url():

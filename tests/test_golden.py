@@ -11,6 +11,7 @@ import pytest
 from eqsl_core import (
     DOWNLOAD_INBOX,
     GET_EQSL,
+    EQSLAuthError,
     EQSLError,
     QSO,
     download_card,
@@ -52,6 +53,17 @@ def test_inbox_error_fixture(requests_mock):
         fetch_inbox_adif(
             make_session(), "u", "p", "", date(2024, 1, 1), date(2024, 12, 31)
         )
+
+
+def test_inbox_bad_login_fixture_is_a_friendly_auth_error(requests_mock):
+    requests_mock.get(DOWNLOAD_INBOX, text=_fixture("inbox_bad_login.html"))
+    with pytest.raises(EQSLAuthError) as excinfo:
+        fetch_inbox_adif(
+            make_session(), "u", "wrong", "", date(2024, 1, 1), date(2024, 12, 31)
+        )
+    message = str(excinfo.value)
+    assert "Login failed" in message
+    assert "<" not in message  # no raw HTML in the user-facing message
 
 
 def test_geteqsl_ok_fixture_extracts_image_url():

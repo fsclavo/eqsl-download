@@ -16,6 +16,7 @@ import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime
+from html import unescape
 from pathlib import Path
 from typing import Callable, Optional
 from urllib.parse import urljoin
@@ -68,9 +69,34 @@ LOCAL_JPG_DATE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Phrases that indicate eQSL rejected the credentials (login page / error).
+AUTH_ERROR_RE = re.compile(
+    r"(invalid|incorrect|wrong|bad)\s+(user\s*name|username|password|login|callsign)"
+    r"|login\s+(failed|error|invalid)"
+    r"|not\s+(a\s+)?valid\s+(user\s*name|username|password|login)"
+    r"|must\s+(be\s+)?log(?:ged)?\s*in"
+    r"|sorry[, ]",
+    re.IGNORECASE,
+)
+
+_SCRIPT_STYLE_RE = re.compile(r"(?is)<(script|style)[^>]*>.*?</\1>")
+_TAG_RE = re.compile(r"(?s)<[^>]+>")
+
 
 class EQSLError(RuntimeError):
     """Raised for expected, user-facing failures (bad login, HTML changes...)."""
+
+
+class EQSLAuthError(EQSLError):
+    """Raised when eQSL rejects the supplied credentials."""
+
+
+def _visible_text(markup: str) -> str:
+    """Strip tags/scripts and collapse whitespace for a readable snippet."""
+    text = _SCRIPT_STYLE_RE.sub(" ", markup)
+    text = _TAG_RE.sub(" ", text)
+    text = unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _log(log: Optional[LogFn], message: str) -> None:
@@ -441,9 +467,17 @@ def fetch_inbox_adif(
     html = r.text
 
     if "Your ADIF log file has been built" not in html:
-        snippet = re.sub(r"\s+", " ", html)[:400]
+        text = _visible_text(html)
+        lowered = text.lower()
+        if AUTH_ERROR_RE.search(text) or ("username" in lowered and "password" in lowered):
+            raise EQSLAuthError(
+                "Login failed: eQSL rejected your callsign or password. "
+                "Check your credentials (and the QTH nickname, if set) and try again."
+            )
+        snippet = text[:200] or "(empty response)"
         raise EQSLError(
-            "DownloadInBox did not succeed. Response snippet:\n" + snippet
+            "DownloadInBox did not return an ADIF file. "
+            f"Server response: {snippet}"
         )
 
     if progress:
