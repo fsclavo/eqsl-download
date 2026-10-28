@@ -26,7 +26,7 @@ jobs:
 
   test:
     name: Tests (py${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -77,7 +77,8 @@ jobs:
       - name: Smoke-test bundled binary
         run: |
           chmod +x Releases/*.AppImage
-          APPIMAGE_EXTRACT_AND_RUN=1 Releases/*.AppImage --version
+          ./Releases/*.AppImage --appimage-extract > /dev/null
+          ./squashfs-root/usr/bin/eqsl-card-downloader --version
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
