@@ -6,8 +6,10 @@ from datetime import date
 
 from eqsl_core import (
     QSO,
+    build_by_name,
     classify_local_file,
     list_local_jpgs,
+    parse_adif,
     scan_local_qsos,
     validate_local_paths,
 )
@@ -93,3 +95,23 @@ def test_scan_local_qsos_classifies_and_lists_pending(write_file, jpeg_bytes):
     }
     assert corrupt_names == [NAME_B]
     assert missing_names == ["LU1-20240317_1200-N0CALL-15m-FT8.jpg"]
+
+
+def test_end_to_end_adif_to_scan(tmp_path, jpeg_bytes):
+    adif = (
+        "<EOH>\n"
+        "<CALL:5>W1AW <QSO_DATE:8>20240315 <TIME_ON:4>1200 <BAND:3>20m <MODE:3>FT8 <EOR>\n"
+        "<CALL:4>K1ZZ<QSO_DATE:8>20240316<TIME_ON:4>0900<BAND:3>40m<MODE:2>CW<EOR>\n"
+    )
+    by_name, collisions = build_by_name(parse_adif(adif), "LU1ABC")
+    assert collisions == []
+    assert len(by_name) == 2
+
+    present = next(iter(by_name))
+    (tmp_path / present).write_bytes(jpeg_bytes)
+
+    skipped, corrupt, missing, to_fetch, _, _ = scan_local_qsos(by_name, tmp_path, 1)
+    assert skipped == 1
+    assert corrupt == 0
+    assert missing == 1
+    assert [name for name, _qso in to_fetch] != [present]

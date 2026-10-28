@@ -36,8 +36,10 @@ python3 eqsl_gui.py
 
 The window asks for your callsign, password, optional QTH nickname, a date
 range (whole year or a custom range), and the destination folder. It shows a
-progress bar and a live log, and can run a local **validation** pass without
-logging in.
+progress bar and a live log, and can run a local **validation** pass (honouring
+the selected date range) without logging in. Callsign, QTH, folder, date mode
+and window geometry are remembered between runs in a per-user config file; the
+password is never stored.
 
 The bundled binary can still act as the CLI, e.g.:
 
@@ -79,7 +81,10 @@ On download runs you will be prompted for:
 | `--to YYYY-MM-DD` | End QSO date |
 | `--dest DIR` | Destination folder (default: script directory) |
 | `--validate-only` | Structural image check of local `*.jpg` only |
-| `--workers N` | Processes for local image validation (default: `8`) |
+| `--dry-run` | Fetch the ADIF and list pending cards without downloading |
+| `--log-file PATH` | Append a timestamped log of the run to `PATH` |
+| `--workers N` | Processes for local image validation (default: `min(8, CPU)`) |
+| `--version` | Print the version and exit |
 
 Rules:
 
@@ -89,6 +94,11 @@ Rules:
 
 Exit codes: `0` on success; `1` if any download failed, or if `--validate-only`
 found corrupt files.
+
+After the main pass, failed downloads are retried once; anything still failing
+is written to `eqsl_failed_YYYYMMDD.txt` in the destination folder. Filenames
+have minute precision, so two QSOs that share call/date/band/mode/minute map to
+the same file — the tool keeps one card and prints a collision warning.
 
 ## Pipeline (download mode)
 
@@ -153,15 +163,18 @@ QA runs on every push/PR via `.github/workflows/ci.yml` (lint + tests on Python
 python3 -m pip install -r requirements-dev.txt
 ruff check .                                   # lint
 pytest                                         # all tests
-pytest -m "not gui" --cov=eqsl_core            # tests + coverage
+pytest -m "not gui" --cov=eqsl_core --cov=eqsl_download   # tests + coverage
 xvfb-run -a pytest tests/test_gui_smoke.py     # GUI smoke (needs a display)
 ```
 
-The suite never touches the network: HTTP is mocked with `requests-mock`. Tests
-include the ADIF parser, the `QSO` model, structural JPEG/PNG validation, local
-file classification/scanning, the download pipeline (success, throttling,
-errors), the CLI argument handling and exit codes, and GUI startup. CI enforces
-a minimum coverage on `eqsl_core` (80%).
+The suite never talks to eQSL: HTTP is mocked with `requests-mock`, and retry
+behaviour is exercised against a throwaway local HTTP server. Coverage includes
+the ADIF parser, the `QSO` model, structural JPEG/PNG validation, local file
+classification/scanning, filename-collision detection, the download pipeline
+(success, throttling, errors, retries, failure export), request parameters,
+golden HTML fixtures for the scraper, the CLI (`--validate-only`, `--dry-run`,
+`--version`, `--log-file`, exit codes), GUI startup/validation and saved
+preferences. CI enforces **≥90% on `eqsl_core`** and **≥80% on `eqsl_download`**.
 
 ## Building releases
 

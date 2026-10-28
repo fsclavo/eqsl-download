@@ -77,6 +77,25 @@ def test_download_card_success(requests_mock, tmp_path, png_bytes):
     assert ok is True
     assert msg == "ok"
     assert dest.read_bytes() == png_bytes
+    assert not dest.with_name(dest.name + ".part").exists()
+
+
+def test_download_card_atomic_failure_leaves_no_partial(
+    requests_mock, tmp_path, png_bytes, monkeypatch
+):
+    requests_mock.get(GET_EQSL, text=f'<html><img src="{IMG_URL}"></html>')
+    requests_mock.get(IMG_URL, content=png_bytes)
+
+    def boom_replace(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(eqsl_core.os, "replace", boom_replace)
+    qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
+    dest = tmp_path / "card.jpg"
+    with pytest.raises(OSError):
+        download_card(make_session(), "user", "pass", qso, dest)
+    assert not dest.exists()
+    assert not dest.with_name(dest.name + ".part").exists()
 
 
 def test_download_card_throttling_retries(requests_mock, tmp_path, png_bytes, monkeypatch):
@@ -118,3 +137,73 @@ def test_download_card_network_error(requests_mock, tmp_path):
     qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
     with pytest.raises(requests.RequestException):
         download_card(make_session(), "user", "pass", qso, tmp_path / "x.jpg")
+
+
+def test_download_card_too_small_image(requests_mock, tmp_path):
+    requests_mock.get(GET_EQSL, text=f'<html><img src="{IMG_URL}"></html>')
+    requests_mock.get(IMG_URL, content=b"tiny")
+    qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
+    ok, msg = download_card(make_session(), "user", "pass", qso, tmp_path / "x.jpg")
+    assert ok is False
+    assert "too small" in msg
+
+
+def test_make_session_configures_retries():
+    session = make_session()
+    retries = session.get_adapter("https://example.com").max_retries
+    assert retries.total == eqsl_core.RETRY_TOTAL
+    assert retries.backoff_factor == eqsl_core.RETRY_BACKOFF_FACTOR
+    assert 429 in retries.status_forcelist
+    assert retries.allowed_methods == frozenset({"GET"})
+
+
+def test_fetch_inbox_adif_sends_expected_params(requests_mock):
+    requests_mock.get(
+        DOWNLOAD_INBOX,
+        text=f'<a href="{ADIF_URL}">Your ADIF log file has been built</a>',
+    )
+    requests_mock.get(ADIF_URL, text=ADIF_BODY)
+
+    fetch_inbox_adif(
+        make_session(), "user", "pass", "Home", date(2024, 1, 2), date(2024, 3, 4)
+    )
+    query = {k.lower(): v for k, v in requests_mock.request_history[0].qs.items()}
+    assert query["username"] == ["user"]
+    assert query["limitdatelo"] == ["01/02/2024"]
+    assert query["limitdatehi"] == ["03/04/2024"]
+    assert query["qthnickname"][0].lower() == "home"
+
+
+def test_download_card_sends_expected_params(requests_mock, tmp_path, png_bytes):
+    requests_mock.get(GET_EQSL, text=f'<html><img src="{IMG_URL}"></html>')
+    requests_mock.get(IMG_URL, content=png_bytes)
+
+    qso = QSO("w1aw/1", "20240315", "142359", "20M", "JT65", "JT65A")
+    download_card(make_session(), "user", "pass", qso, tmp_path / "c.jpg")
+
+    query = {k.lower(): v for k, v in requests_mock.request_history[0].qs.items()}
+    assert query["callsignfrom"] == ["w1aw/1"]
+    assert query["qsoyear"] == ["2024"]
+    assert query["qsomonth"] == ["03"]
+    assert query["qsoday"] == ["15"]
+    assert query["qsohour"] == ["14"]
+    assert query["qsominute"] == ["23"]
+    assert query["qsoband"][0].lower() == "20m"
+    assert query["qsomode"][0].lower() == "jt65"
+
+
+@pytest.mark.slow
+def test_retries_on_503_then_succeeds(http_server):
+    url, state = http_server([503, 200])
+    response = make_session().get(url, timeout=5)
+    assert response.status_code == 200
+    assert state["count"] == 2
+
+
+@pytest.mark.slow
+def test_does_not_retry_on_400(http_server):
+    url, state = http_server([400, 200])
+    response = make_session().get(url, timeout=5)
+    assert response.status_code == 400
+    assert state["count"] == 1
+

@@ -82,3 +82,59 @@ def test_validate_only_subprocess_clean_exit_zero(tmp_path):
     proc = _run_cli("--validate-only", "--dest", str(tmp_path))
     assert proc.returncode == 0
     assert "total=0" in proc.stdout
+
+
+def test_version_subprocess():
+    proc = _run_cli("--version")
+    assert proc.returncode == 0
+    assert "eQSL Card Downloader" in proc.stdout
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() in proc.stdout
+
+
+def test_validate_only_writes_log_file(tmp_path):
+    logfile = tmp_path / "validate.log"
+    proc = _run_cli(
+        "--validate-only", "--dest", str(tmp_path), "--log-file", str(logfile)
+    )
+    assert proc.returncode == 0
+    assert logfile.exists()
+    assert "validate-only" in logfile.read_text(encoding="utf-8")
+    assert "validate-only" in proc.stdout
+
+
+def _patch_download_run(monkeypatch, tmp_path, adif_text, *extra_argv):
+    monkeypatch.setattr(
+        sys, "argv",
+        ["eqsl_download.py", "--year", "2024", "--dest", str(tmp_path), *extra_argv],
+    )
+    monkeypatch.setattr(
+        eqsl_download, "prompt_credentials", lambda: ("LU1ABC", "pw", "")
+    )
+    monkeypatch.setattr(
+        eqsl_download, "fetch_inbox_adif", lambda *a, **k: adif_text
+    )
+    monkeypatch.setattr(eqsl_download, "GET_DELAY_SEC", 0)
+
+
+def test_dry_run_does_not_download(monkeypatch, tmp_path, sample_adif):
+    _patch_download_run(monkeypatch, tmp_path, sample_adif, "--dry-run")
+    calls = {"n": 0}
+
+    def fake_download(*a, **k):
+        calls["n"] += 1
+        return True, "ok"
+
+    monkeypatch.setattr(eqsl_download, "download_card", fake_download)
+    assert eqsl_download.main() == 0
+    assert calls["n"] == 0
+
+
+def test_failed_downloads_are_exported(monkeypatch, tmp_path, sample_adif):
+    _patch_download_run(monkeypatch, tmp_path, sample_adif)
+    monkeypatch.setattr(eqsl_download, "download_card", lambda *a, **k: (False, "boom"))
+
+    assert eqsl_download.main() == 1
+    failures = list(tmp_path.glob("eqsl_failed_*.txt"))
+    assert failures
+    assert ".jpg" in failures[0].read_text(encoding="utf-8")
+

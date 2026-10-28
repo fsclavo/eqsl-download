@@ -60,3 +60,62 @@ def test_gui_resolves_year_and_range():
         )
     finally:
         root.destroy()
+
+
+def test_prefs_roundtrip_excludes_password(tmp_path):
+    path = tmp_path / "config.json"
+    prefs = {
+        "callsign": "LU1ABC",
+        "password": "SECRET",
+        "dest": "/tmp/cards",
+        "date_mode": "range",
+        "year": "2024",
+        "from": "2024-01-01",
+        "to": "2024-12-31",
+        "geometry": "800x600",
+        "junk": "ignored",
+    }
+    assert eqsl_gui.save_prefs(prefs, path) is True
+    loaded = eqsl_gui.load_prefs(path)
+    assert loaded["callsign"] == "LU1ABC"
+    assert "password" not in loaded
+    assert "junk" not in loaded
+
+
+def test_prefs_corrupt_file_returns_empty(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text("{not valid json", encoding="utf-8")
+    assert eqsl_gui.load_prefs(path) == {}
+
+
+def test_prefs_non_object_returns_empty(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text("[1, 2, 3]", encoding="utf-8")
+    assert eqsl_gui.load_prefs(path) == {}
+
+
+def test_validate_worker_uses_date_range(monkeypatch, tmp_path):
+    _require_display()
+    monkeypatch.setattr(eqsl_gui, "load_prefs", lambda *a, **k: {})
+    root = tk.Tk()
+    try:
+        app = eqsl_gui.EQSLCardGUI(root)
+        calls = {}
+
+        def fake_list(dest, d_from, d_to):
+            calls["args"] = (dest, d_from, d_to)
+            return []
+
+        monkeypatch.setattr(eqsl_gui, "list_local_jpgs", fake_list)
+        d_from = eqsl_gui.date(2024, 1, 1)
+        d_to = eqsl_gui.date(2024, 12, 31)
+        app._validate_worker(tmp_path, (d_from, d_to))
+
+        assert calls["args"] == (tmp_path, d_from, d_to)
+        messages = []
+        while not app.msg_queue.empty():
+            messages.append(app.msg_queue.get_nowait())
+        assert messages[-1][0] == "done"
+    finally:
+        root.destroy()
+

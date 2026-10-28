@@ -41,7 +41,11 @@ jobs:
       - name: Run tests
         run: >
           python -m pytest -m "not gui"
-          --cov=eqsl_core --cov-report=term-missing --cov-fail-under=80
+          --cov=eqsl_core --cov=eqsl_download --cov-report=term-missing
+      - name: Enforce coverage thresholds
+        run: |
+          python -m coverage report --include="eqsl_core.py" --fail-under=90
+          python -m coverage report --include="eqsl_download.py" --fail-under=80
 
   gui:
     name: GUI smoke test
@@ -70,6 +74,10 @@ jobs:
           sudo apt-get install -y desktop-file-utils file
       - name: Build AppImage
         run: bash packaging/linux/build_appimage.sh
+      - name: Smoke-test bundled binary
+        run: |
+          chmod +x Releases/*.AppImage
+          APPIMAGE_EXTRACT_AND_RUN=1 Releases/*.AppImage --version
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:

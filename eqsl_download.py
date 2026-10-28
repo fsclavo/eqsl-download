@@ -16,6 +16,7 @@ import getpass
 import multiprocessing
 import shutil
 import sys
+import time
 from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
@@ -27,10 +28,12 @@ from eqsl_core import (
     GET_DELAY_SEC,
     EQSLError,
     QSO,
+    build_by_name,
     detect_image_kind,
     download_card,
     fetch_inbox_adif,
     format_eta,
+    get_version,
     is_valid_jpeg,
     list_local_jpgs,
     make_session,
@@ -95,6 +98,28 @@ class ProgressBar:
         self._last_len = 0
 
 
+class Logger:
+    """Console logger that optionally mirrors every line to a file."""
+
+    def __init__(self, path: Optional[Path] = None) -> None:
+        self._fh = None
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._fh = open(path, "a", encoding="utf-8")
+
+    def __call__(self, message: str = "") -> None:
+        print(message)
+        if self._fh is not None:
+            stamp = datetime.now().isoformat(timespec="seconds")
+            self._fh.write(f"{stamp} {message}\n")
+            self._fh.flush()
+
+    def close(self) -> None:
+        if self._fh is not None:
+            self._fh.close()
+            self._fh = None
+
+
 def prompt_credentials() -> tuple[str, str, str]:
     callsign = input("Callsign: ").strip()
     if not callsign:
@@ -110,6 +135,11 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Download eQSL.cc card images for a QSO date range."
     )
+    p.add_argument(
+        "--version",
+        action="version",
+        version=f"eQSL Card Downloader {get_version()}",
+    )
     p.add_argument("--year", type=int, help="Shortcut: that calendar year")
     p.add_argument("--from", dest="date_from", metavar="YYYY-MM-DD", help="Start QSO date")
     p.add_argument("--to", dest="date_to", metavar="YYYY-MM-DD", help="End QSO date")
@@ -124,6 +154,18 @@ def parse_args() -> argparse.Namespace:
         "--validate-only",
         action="store_true",
         help="Validate local card images only (no login, no download). Dates optional.",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch the ADIF and list pending cards without downloading them.",
+    )
+    p.add_argument(
+        "--log-file",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Append a timestamped log of the run to PATH.",
     )
     p.add_argument(
         "--workers",
@@ -167,173 +209,233 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def run_validate_only(args: argparse.Namespace) -> int:
+def run_validate_only(args: argparse.Namespace, log: Logger) -> int:
     """Local-only validation: no credentials, no ADIF, no download."""
     dest: Path = args.dest
-    print(f"[validate-only] Escaneando JPGs locales en {dest} (sin login / sin descarga)")
+    log(f"[validate-only] Scanning local JPGs in {dest} (no login / no download)")
     if args.from_date and args.to_date:
-        print(f"  filtro fechas QSO: {args.from_date} .. {args.to_date}")
+        log(f"  QSO date filter: {args.from_date} .. {args.to_date}")
     else:
-        print("  sin filtro de fechas (todos los .jpg del directorio)")
+        log("  no date filter (all .jpg files in the folder)")
 
     paths = list_local_jpgs(dest, args.from_date, args.to_date)
-    print(f"  archivos a chequear: {len(paths)}")
+    log(f"  files to check: {len(paths)}")
 
     if not paths:
-        print("  no hay archivos .jpg para validar")
-        print("Done. validate_only ok=0 corrupt=0 total=0")
+        log("  no .jpg files to validate")
+        log("Done. validate_only ok=0 corrupt=0 total=0")
         return 0
 
-    print(f"  validando imagen (JPEG/PNG, {args.workers} procesos) ...")
+    log(f"  validating images (JPEG/PNG, {args.workers} processes) ...")
     bar = ProgressBar(len(paths))
     ok, corrupt, corrupt_names = validate_local_paths(
         paths, args.workers, progress=lambda d, t, s: bar.update(d, s)
     )
-    bar.finish(f"ok={ok} corruptos={corrupt}")
+    bar.finish(f"ok={ok} corrupt={corrupt}")
 
     if corrupt_names:
-        print(f"  corruptos ({len(corrupt_names)}):")
+        log(f"  corrupt ({len(corrupt_names)}):")
         for name in sorted(corrupt_names):
-            print(f"    {name}")
+            log(f"    {name}")
 
-    print(f"Done. validate_only ok={ok} corrupt={corrupt} total={len(paths)}")
+    log(f"Done. validate_only ok={ok} corrupt={corrupt} total={len(paths)}")
     return 1 if corrupt else 0
+
+
+def _download_one(
+    session: requests.Session,
+    username: str,
+    password: str,
+    qso: QSO,
+    path: Path,
+    log: Logger,
+) -> tuple[bool, str]:
+    try:
+        ok, msg = download_card(session, username, password, qso, path, log=log)
+    except requests.RequestException as exc:
+        return False, str(exc)
+
+    if ok and not is_valid_jpeg(path):
+        ok = False
+        try:
+            raw = path.read_bytes()
+            msg = (
+                "Downloaded file failed image validation "
+                f"(kind={detect_image_kind(raw)}, size={len(raw)})"
+            )
+        except OSError:
+            msg = "Downloaded file failed image validation (unreadable)"
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    return ok, msg
+
+
+def _write_failures(
+    dest: Path, failed: list[tuple[str, QSO, str]], log: Logger
+) -> Optional[Path]:
+    if not failed:
+        return None
+    failures_file = dest / f"eqsl_failed_{date.today():%Y%m%d}.txt"
+    try:
+        failures_file.write_text(
+            "\n".join(name for name, _qso, _msg in failed) + "\n", encoding="utf-8"
+        )
+        log(f"  {len(failed)} card(s) still failing; list written to {failures_file}")
+        return failures_file
+    except OSError as exc:
+        log(f"  could not write failures list: {exc}")
+        return None
 
 
 def main() -> int:
     args = parse_args()
     dest: Path = args.dest
+    log = Logger(args.log_file)
 
-    if args.validate_only:
-        return run_validate_only(args)
-
-    assert args.from_date is not None and args.to_date is not None
-
-    username, password, qth = prompt_credentials()
-
-    session = make_session()
-
-    print(f"[1/4] Descargando ADIF ({args.from_date} .. {args.to_date})")
-    bar = ProgressBar(3)
     try:
-        adif_text = fetch_inbox_adif(
-            session,
-            username,
-            password,
-            qth,
-            args.from_date,
-            args.to_date,
-            progress=lambda d, t, s: bar.update(d, s),
-        )
-    except (requests.RequestException, EQSLError) as exc:
-        bar.finish("error")
-        print(str(exc), file=sys.stderr)
-        return 1
-    bar.finish()
+        if args.validate_only:
+            return run_validate_only(args, log)
 
-    print("[2/4] Procesando ADIF ...")
-    qsos = parse_adif(adif_text)
-    print(f"  registros parseados: {len(qsos)}")
+        assert args.from_date is not None and args.to_date is not None
 
-    if not qsos:
-        print("Nothing to download.")
-        return 0
+        username, password, qth = prompt_credentials()
 
-    by_name: dict[str, QSO] = {}
-    for qso in qsos:
-        by_name[qso.filename(username)] = qso
-    total = len(by_name)
-    print(f"  únicos por archivo: {total}")
+        session = make_session()
 
-    print(f"[3/4] Escaneando directorio local ({dest.name}/) ...")
-    print(f"  validando imagen (JPEG/PNG, {args.workers} procesos) ...")
-    scan_bar = ProgressBar(total)
-    (
-        skipped,
-        corrupt,
-        _missing,
-        to_fetch,
-        _corrupt_names,
-        _missing_names,
-    ) = scan_local_qsos(
-        by_name,
-        dest,
-        args.workers,
-        progress=lambda d, t, s: scan_bar.update(d, s),
-    )
-    scan_bar.finish(
-        f"ok={skipped} corruptos={corrupt} faltan={_missing}"
-    )
-    print(
-        f"  resumen — válidos: {skipped} | corruptos: {corrupt} | "
-        f"faltan: {_missing} | a descargar: {len(to_fetch)}"
-    )
-
-    pending = len(to_fetch)
-    downloaded = 0
-    failed = 0
-
-    if pending == 0:
-        print("[4/4] Nada pendiente de descargar.")
-        print(
-            f"Done. downloaded=0 skipped={skipped} corrupt={corrupt} "
-            f"failed=0 total_unique={total}"
-        )
-        return 0
-
-    print(f"[4/4] Descargando pendientes ({pending}) ...")
-    dl_bar = ProgressBar(pending)
-
-    for i, (name, qso) in enumerate(to_fetch, start=1):
-        path = dest / name
-        left = pending - i
-        eta = format_eta(left) if left else "0s"
-        dl_bar.update(i - 1, f"ETA {eta} | {name}")
+        log(f"[1/4] Downloading ADIF ({args.from_date} .. {args.to_date})")
+        bar = ProgressBar(3)
         try:
-            ok, msg = download_card(
-                session, username, password, qso, path, log=dl_bar.note
+            adif_text = fetch_inbox_adif(
+                session,
+                username,
+                password,
+                qth,
+                args.from_date,
+                args.to_date,
+                progress=lambda d, t, s: bar.update(d, s),
             )
-        except requests.RequestException as exc:
-            ok, msg = False, str(exc)
+        except (requests.RequestException, EQSLError) as exc:
+            bar.finish("error")
+            print(str(exc), file=sys.stderr)
+            return 1
+        bar.finish()
 
-        if ok and not is_valid_jpeg(path):
-            ok = False
-            try:
-                raw = path.read_bytes()
-                kind = detect_image_kind(raw)
-                msg = (
-                    f"Downloaded file failed image validation "
-                    f"(kind={kind}, size={len(raw)}, magic={raw[:8].hex()})"
-                )
-            except OSError:
-                msg = "Downloaded file failed image validation (unreadable)"
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        log("[2/4] Parsing ADIF ...")
+        qsos = parse_adif(adif_text)
+        log(f"  records parsed: {len(qsos)}")
 
-        if ok:
-            downloaded += 1
-        else:
-            failed += 1
-            dl_bar.note(f"FAILED {name}: {msg}")
+        if not qsos:
+            log("Nothing to download.")
+            return 0
 
-        dl_bar.update(
-            i,
-            f"ok={downloaded} fail={failed} ETA {format_eta(pending - i)} | {name}",
+        by_name, collisions = build_by_name(qsos, username)
+        total = len(by_name)
+        log(f"  unique files: {total}")
+        if collisions:
+            log(
+                f"  WARNING: {len(collisions)} filename collision(s) "
+                "(same call/date/band/mode/minute); keeping one card per name"
+            )
+            for name in sorted(collisions):
+                log(f"    collision: {name}")
+
+        log(f"[3/4] Scanning local folder ({dest.name}/) ...")
+        log(f"  validating images (JPEG/PNG, {args.workers} processes) ...")
+        scan_bar = ProgressBar(total)
+        (
+            skipped,
+            corrupt,
+            missing,
+            to_fetch,
+            _corrupt_names,
+            _missing_names,
+        ) = scan_local_qsos(
+            by_name,
+            dest,
+            args.workers,
+            progress=lambda d, t, s: scan_bar.update(d, s),
+        )
+        scan_bar.finish(f"ok={skipped} corrupt={corrupt} missing={missing}")
+        log(
+            f"  summary — valid: {skipped} | corrupt: {corrupt} | "
+            f"missing: {missing} | to download: {len(to_fetch)}"
         )
 
-        if i < pending:
-            import time
+        if args.dry_run:
+            log("[dry-run] Nothing will be downloaded.")
+            for name, _qso in to_fetch:
+                log(f"  pending: {name}")
+            log(f"[dry-run] pending={len(to_fetch)} total_unique={total}")
+            return 0
 
-            time.sleep(GET_DELAY_SEC)
+        pending = len(to_fetch)
+        downloaded = 0
+        failed_items: list[tuple[str, QSO, str]] = []
 
-    dl_bar.finish(f"ok={downloaded} fail={failed}")
-    print(
-        f"Done. downloaded={downloaded} skipped={skipped} "
-        f"corrupt_found={corrupt} failed={failed} total_unique={total}"
-    )
-    return 1 if failed else 0
+        if pending == 0:
+            log("[4/4] Nothing pending to download.")
+            log(
+                f"Done. downloaded=0 skipped={skipped} corrupt={corrupt} "
+                f"failed=0 total_unique={total}"
+            )
+            return 0
+
+        log(f"[4/4] Downloading pending cards ({pending}) ...")
+        dl_bar = ProgressBar(pending)
+
+        for i, (name, qso) in enumerate(to_fetch, start=1):
+            left = pending - i
+            eta = format_eta(left) if left else "0s"
+            dl_bar.update(i - 1, f"ETA {eta} | {name}")
+            ok, msg = _download_one(session, username, password, qso, dest / name, log)
+            if ok:
+                downloaded += 1
+            else:
+                failed_items.append((name, qso, msg))
+                dl_bar.note(f"FAILED {name}: {msg}")
+            dl_bar.update(
+                i,
+                f"ok={downloaded} fail={len(failed_items)} "
+                f"ETA {format_eta(pending - i)} | {name}",
+            )
+            if i < pending:
+                time.sleep(GET_DELAY_SEC)
+        dl_bar.finish(f"ok={downloaded} fail={len(failed_items)}")
+
+        if failed_items:
+            log(f"Retrying {len(failed_items)} failed download(s) ...")
+            retry_bar = ProgressBar(len(failed_items))
+            still_failed: list[tuple[str, QSO, str]] = []
+            for i, (name, qso, _msg) in enumerate(failed_items, start=1):
+                retry_bar.update(i - 1, f"retry | {name}")
+                ok, msg = _download_one(
+                    session, username, password, qso, dest / name, log
+                )
+                if ok:
+                    downloaded += 1
+                else:
+                    still_failed.append((name, qso, msg))
+                    retry_bar.note(f"FAILED (retry) {name}: {msg}")
+                retry_bar.update(
+                    i, f"ok={downloaded} fail={len(still_failed)} | {name}"
+                )
+                if i < len(failed_items):
+                    time.sleep(GET_DELAY_SEC)
+            retry_bar.finish(f"ok={downloaded} fail={len(still_failed)}")
+            failed_items = still_failed
+
+        failed = len(failed_items)
+        _write_failures(dest, failed_items, log)
+        log(
+            f"Done. downloaded={downloaded} skipped={skipped} "
+            f"corrupt_found={corrupt} failed={failed} total_unique={total}"
+        )
+        return 1 if failed else 0
+    finally:
+        log.close()
 
 
 if __name__ == "__main__":

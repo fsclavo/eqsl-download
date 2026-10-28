@@ -9,8 +9,10 @@ or GUI output is emitted through optional callbacks so both the CLI
 from __future__ import annotations
 
 import multiprocessing
+import os
 import re
 import struct
+import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -19,6 +21,8 @@ from typing import Callable, Optional
 from urllib.parse import urljoin
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 BASE = "https://www.eqsl.cc"
 DOWNLOAD_INBOX = f"{BASE}/qslcard/DownloadInBox.cfm"
@@ -27,7 +31,12 @@ GET_EQSL = f"{BASE}/qslcard/GeteQSL.cfm"
 # Official limit is slower than 6/min; 11s ≈ 5.4/min.
 GET_DELAY_SEC = 11
 THROTTLE_WAIT_SEC = 20
-DEFAULT_SCAN_WORKERS = 8
+DEFAULT_SCAN_WORKERS = max(1, min(8, os.cpu_count() or 4))
+
+# Retry policy for transient network failures (all calls are idempotent GETs).
+RETRY_TOTAL = 4
+RETRY_BACKOFF_FACTOR = 0.5
+RETRY_STATUS_FORCELIST = (429, 500, 502, 503, 504)
 
 USER_AGENT = "fer-eqsl-downloader/1.0 (personal use; rate-limited)"
 
@@ -67,6 +76,15 @@ class EQSLError(RuntimeError):
 def _log(log: Optional[LogFn], message: str) -> None:
     if log is not None:
         log(message)
+
+
+def get_version() -> str:
+    """Application version, read from the bundled VERSION file when present."""
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    try:
+        return (base / "VERSION").read_text(encoding="utf-8").strip() or "0.0.0"
+    except OSError:
+        return "0.0.0"
 
 
 @dataclass
@@ -275,6 +293,24 @@ def parse_adif(text: str) -> list[QSO]:
     return records
 
 
+def build_by_name(qsos: list[QSO], mycall: str) -> tuple[dict[str, QSO], list[str]]:
+    """Map target filename -> QSO, reporting filenames that collide.
+
+    Filenames carry only minute precision, so two QSOs sharing call, date,
+    band, mode and minute map to the same file. The last record wins (legacy
+    behaviour) but every collision is returned so callers can warn the user
+    instead of silently dropping cards.
+    """
+    by_name: dict[str, QSO] = {}
+    collisions: list[str] = []
+    for qso in qsos:
+        name = qso.filename(mycall)
+        if name in by_name:
+            collisions.append(name)
+        by_name[name] = qso
+    return by_name, collisions
+
+
 def list_local_jpgs(
     dest_dir: Path,
     d_from: Optional[date] = None,
@@ -290,7 +326,11 @@ def list_local_jpgs(
         m = LOCAL_JPG_DATE_RE.match(path.name)
         if not m:
             continue
-        qdate = datetime.strptime(m.group(1), "%Y%m%d").date()
+        try:
+            qdate = datetime.strptime(m.group(1), "%Y%m%d").date()
+        except ValueError:
+            # Skip files whose embedded date is not a real calendar date.
+            continue
         if d_from is not None and qdate < d_from:
             continue
         if d_to is not None and qdate > d_to:
@@ -325,10 +365,10 @@ def validate_local_paths(
                 corrupt_names.append(path.name)
             done += 1
             if progress and (done == total or done % 25 == 0):
-                progress(done, total, f"ok={ok} corruptos={corrupt}")
+                progress(done, total, f"ok={ok} corrupt={corrupt}")
 
     if progress:
-        progress(total, total, f"ok={ok} corruptos={corrupt}")
+        progress(total, total, f"ok={ok} corrupt={corrupt}")
     return ok, corrupt, corrupt_names
 
 
@@ -354,6 +394,21 @@ def format_eta(remaining: int, delay_sec: int = GET_DELAY_SEC) -> str:
 def make_session() -> requests.Session:
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT})
+
+    retry = Retry(
+        total=RETRY_TOTAL,
+        connect=RETRY_TOTAL,
+        read=RETRY_TOTAL,
+        status=RETRY_TOTAL,
+        backoff_factor=RETRY_BACKOFF_FACTOR,
+        status_forcelist=RETRY_STATUS_FORCELIST,
+        allowed_methods=frozenset({"GET"}),
+        respect_retry_after_header=True,
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
     return session
 
 
@@ -378,9 +433,9 @@ def fetch_inbox_adif(
     if qth:
         params["QTHNickname"] = qth
 
-    _log(log, f"Descargando ADIF ({d_from} .. {d_to})")
+    _log(log, f"Downloading ADIF ({d_from} .. {d_to})")
     if progress:
-        progress(0, 3, "solicitando lista")
+        progress(0, 3, "requesting list")
     r = session.get(DOWNLOAD_INBOX, params=params, timeout=120)
     r.raise_for_status()
     html = r.text
@@ -392,14 +447,14 @@ def fetch_inbox_adif(
         )
 
     if progress:
-        progress(1, 3, "localizando enlace")
+        progress(1, 3, "locating link")
     m = HREF_ADI_RE.search(html)
     if not m:
         raise EQSLError("Could not find ADIF download link in DownloadInBox response.")
 
     adif_url = urljoin(r.url, m.group(1))
     if progress:
-        progress(2, 3, "bajando archivo")
+        progress(2, 3, "downloading file")
     ar = session.get(adif_url, timeout=120)
     ar.raise_for_status()
     size_kb = max(1, len(ar.content) // 1024)
@@ -469,7 +524,15 @@ def download_card(
         ir.raise_for_status()
         if not ir.content or len(ir.content) < 100:
             return False, "Image download too small / empty"
-        dest.write_bytes(ir.content)
+
+        # Atomic write: never leave a half-written card behind.
+        tmp = dest.with_name(dest.name + ".part")
+        try:
+            tmp.write_bytes(ir.content)
+            os.replace(tmp, dest)
+        except OSError:
+            tmp.unlink(missing_ok=True)
+            raise
         return True, "ok"
 
     return False, "Failed after throttle retry"
@@ -513,8 +576,8 @@ def scan_local_qsos(
                 to_fetch.append((name, qso))
             done += 1
             if progress and (done == total or done % 25 == 0):
-                progress(done, total, f"ok={skipped} corruptos={corrupt} faltan={missing}")
+                progress(done, total, f"ok={skipped} corrupt={corrupt} missing={missing}")
 
     if progress:
-        progress(total, total, f"ok={skipped} corruptos={corrupt} faltan={missing}")
+        progress(total, total, f"ok={skipped} corrupt={corrupt} missing={missing}")
     return skipped, corrupt, missing, to_fetch, corrupt_names, missing_names

@@ -3,11 +3,12 @@ testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 markers = [
     "gui: smoke tests that need a display (X11/xvfb) and tkinter",
+    "slow: slower tests (multiprocessing / subprocess / local server)",
 ]
 
 [tool.coverage.run]
 branch = true
-source = ["eqsl_core"]
+source = ["eqsl_core", "eqsl_download"]
 
 [tool.coverage.report]
 show_missing = true

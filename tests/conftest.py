@@ -65,3 +65,43 @@ SAMPLE_ADIF = (
 @pytest.fixture
 def sample_adif() -> str:
     return SAMPLE_ADIF
+
+
+@pytest.fixture
+def http_server():
+    """Start a local HTTP server returning a scripted list of status codes.
+
+    Usage: url, state = http_server([503, 200]); state["count"] counts hits.
+    """
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    servers = []
+
+    def _make(codes):
+        state = {"count": 0, "codes": list(codes)}
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802 (http.server API)
+                state["count"] += 1
+                code = state["codes"].pop(0) if state["codes"] else 200
+                self.send_response(code)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"ok")
+
+            def log_message(self, *args):  # silence test output
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        servers.append(server)
+        url = f"http://127.0.0.1:{server.server_address[1]}/"
+        return url, state
+
+    yield _make
+
+    for server in servers:
+        server.shutdown()
+        server.server_close()
+
