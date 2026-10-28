@@ -71,7 +71,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y desktop-file-utils file
+          sudo apt-get install -y desktop-file-utils file python3-tk
       - name: Build AppImage
         run: bash packaging/linux/build_appimage.sh
       - name: Smoke-test frozen binary

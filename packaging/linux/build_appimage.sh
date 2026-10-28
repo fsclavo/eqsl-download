@@ -37,6 +37,13 @@ echo ">> Creating build virtualenv"
 "$VENV/bin/python" -m pip install --quiet --upgrade pip
 "$VENV/bin/python" -m pip install --quiet -r "$ROOT/requirements.txt" pyinstaller pillow
 
+echo ">> Checking tkinter availability"
+if ! "$VENV/bin/python" -c "import tkinter" 2>/dev/null; then
+  echo "ERROR: tkinter is not available for $PY." >&2
+  echo "       Install it (e.g. 'sudo apt install python3-tk') and retry." >&2
+  exit 1
+fi
+
 echo ">> Generating icons"
 "$VENV/bin/python" "$ROOT/packaging/make_icons.py"
 
