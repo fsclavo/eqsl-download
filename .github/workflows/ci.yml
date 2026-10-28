@@ -15,7 +15,7 @@ jobs:
     name: Lint (ruff)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -32,7 +32,7 @@ jobs:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -51,7 +51,7 @@ jobs:
     name: GUI smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install tkinter and xvfb
         run: |
           sudo apt-get update
@@ -67,7 +67,7 @@ jobs:
     name: Build AppImage
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
