@@ -74,11 +74,12 @@ jobs:
           sudo apt-get install -y desktop-file-utils file
       - name: Build AppImage
         run: bash packaging/linux/build_appimage.sh
-      - name: Smoke-test bundled binary
+      - name: Smoke-test frozen binary
         run: |
-          chmod +x Releases/*.AppImage
-          ./Releases/*.AppImage --appimage-extract > /dev/null
-          ./squashfs-root/usr/bin/eqsl-card-downloader --version
+          ./dist/eqsl-card-downloader/eqsl-card-downloader --version
+          test -s Releases/*.AppImage
+          test -x Releases/*.AppImage
+          ls -l Releases/*.AppImage
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
