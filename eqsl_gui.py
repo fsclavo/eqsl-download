@@ -40,6 +40,7 @@ from eqsl_core import (
     scan_local_qsos,
     validate_local_paths,
 )
+import eqsl_download
 
 APP_NAME = "eQSL Card Downloader"
 APP_VERSION = get_version()
@@ -662,9 +663,7 @@ def main() -> int:
     # Allow the bundled binary to double as the command-line tool, e.g.:
     #   eQSL_Card_Downloader --validate-only --dest ~/cards
     if len(sys.argv) > 1:
-        from eqsl_download import main as cli_main
-
-        return cli_main()
+        return eqsl_download.main()
 
     root = tk.Tk(className="eQSL-Card-Downloader")
     EQSLCardGUI(root)

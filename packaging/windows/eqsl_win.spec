@@ -70,6 +70,8 @@ a = Analysis(  # noqa: F821
         "multiprocessing",
         "multiprocessing.spawn",
         "multiprocessing.pool",
+        "eqsl_core",
+        "eqsl_download",
     ],
     hookspath=[],
     hooksconfig={},

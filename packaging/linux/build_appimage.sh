@@ -54,6 +54,8 @@ echo ">> Running PyInstaller (onedir)"
   --add-data "$ROOT/VERSION:." \
   --hidden-import multiprocessing \
   --hidden-import multiprocessing.spawn \
+  --hidden-import eqsl_core \
+  --hidden-import eqsl_download \
   --collect-submodules multiprocessing \
   "$ROOT/eqsl_gui.py"
 

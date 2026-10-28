@@ -75,24 +75,27 @@ jobs:
       - name: Build AppImage
         run: bash packaging/linux/build_appimage.sh
       - name: Smoke-test frozen binary
+        id: smoke
         run: |
-          set -o pipefail
-          {
-            echo "== python/pyinstaller =="
-            dist/eqsl-card-downloader/eqsl-card-downloader --version
-            echo "== dist tree =="
-            ls -la dist || true
-            ls -la dist/eqsl-card-downloader || true
-            echo "== releases =="
-            ls -la Releases || true
-            test -s Releases/*.AppImage
-            test -x Releases/*.AppImage
-          } 2>&1 | tee smoke.log
+          set +e
+          dist/eqsl-card-downloader/eqsl-card-downloader --version > smoke.log 2>&1
+          rc=$?
+          if [ "$rc" -eq 0 ]; then
+            test -s Releases/*.AppImage || rc=1
+            test -x Releases/*.AppImage || rc=1
+            ls -l Releases/*.AppImage >> smoke.log 2>&1
+          fi
+          cat smoke.log
+          if [ "$rc" -ne 0 ]; then
+            tag=$(tr -c 'A-Za-z0-9._-' '_' < smoke.log | tr -d '\n' | cut -c1-80)
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          fi
+          exit $rc
       - name: Upload smoke diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-log
+          name: smoke-${{ steps.smoke.outputs.tag || 'ok' }}
           path: smoke.log
           if-no-files-found: ignore
       - name: Upload AppImage
