@@ -76,10 +76,25 @@ jobs:
         run: bash packaging/linux/build_appimage.sh
       - name: Smoke-test frozen binary
         run: |
-          ./dist/eqsl-card-downloader/eqsl-card-downloader --version
-          test -s Releases/*.AppImage
-          test -x Releases/*.AppImage
-          ls -l Releases/*.AppImage
+          set -o pipefail
+          {
+            echo "== python/pyinstaller =="
+            dist/eqsl-card-downloader/eqsl-card-downloader --version
+            echo "== dist tree =="
+            ls -la dist || true
+            ls -la dist/eqsl-card-downloader || true
+            echo "== releases =="
+            ls -la Releases || true
+            test -s Releases/*.AppImage
+            test -x Releases/*.AppImage
+          } 2>&1 | tee smoke.log
+      - name: Upload smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-log
+          path: smoke.log
+          if-no-files-found: ignore
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
         with:
