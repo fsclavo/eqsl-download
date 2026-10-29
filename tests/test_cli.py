@@ -206,3 +206,59 @@ def test_resolve_credentials_interactive_uses_flags(monkeypatch):
     monkeypatch.setattr("builtins.input", no_input)
     args = SimpleNamespace(password_stdin=False, callsign="LU1ABC", qth="Home")
     assert eqsl_download.resolve_credentials(args) == ("LU1ABC", "pw", "Home")
+
+
+def test_force_and_only_missing_are_exclusive(monkeypatch):
+    with pytest.raises(SystemExit):
+        _parse(monkeypatch, "--year", "2024", "--force", "--only-missing")
+
+
+_NAME_A = "LU1ABC-20240315_1423-W1AW-20m-FT8.jpg"
+_NAME_B = "LU1ABC-20240316_1423-LU1ABC-40m-JT65.jpg"
+
+
+def test_force_redownloads_even_when_valid(monkeypatch, tmp_path, sample_adif, jpeg_bytes):
+    (tmp_path / _NAME_A).write_bytes(jpeg_bytes)
+    _patch_download_run(monkeypatch, tmp_path, sample_adif, "--force")
+    calls = []
+
+    def fake_download(session, u, p, qso, path, log=None, **kwargs):
+        calls.append(path.name)
+        path.write_bytes(jpeg_bytes)
+        return True, "ok"
+
+    monkeypatch.setattr(eqsl_download, "download_card", fake_download)
+    assert eqsl_download.main() == 0
+    assert set(calls) == {_NAME_A, _NAME_B}
+
+
+def test_only_missing_skips_valid(monkeypatch, tmp_path, sample_adif, jpeg_bytes):
+    (tmp_path / _NAME_A).write_bytes(jpeg_bytes)  # valid, must be skipped
+    _patch_download_run(monkeypatch, tmp_path, sample_adif, "--only-missing")
+    calls = []
+
+    def fake_download(session, u, p, qso, path, log=None, **kwargs):
+        calls.append(path.name)
+        path.write_bytes(jpeg_bytes)
+        return True, "ok"
+
+    monkeypatch.setattr(eqsl_download, "download_card", fake_download)
+    assert eqsl_download.main() == 0
+    assert calls == [_NAME_B]
+
+
+def test_only_missing_does_not_redownload_corrupt(monkeypatch, tmp_path, sample_adif, jpeg_bytes):
+    (tmp_path / _NAME_A).write_bytes(jpeg_bytes)  # valid
+    (tmp_path / _NAME_B).write_bytes(b"broken")   # corrupt -> left untouched
+    _patch_download_run(monkeypatch, tmp_path, sample_adif, "--only-missing")
+    calls = []
+
+    def fake_download(session, u, p, qso, path, log=None, **kwargs):
+        calls.append(path.name)
+        path.write_bytes(jpeg_bytes)
+        return True, "ok"
+
+    monkeypatch.setattr(eqsl_download, "download_card", fake_download)
+    assert eqsl_download.main() == 0
+    assert calls == []
+    assert (tmp_path / _NAME_B).read_bytes() == b"broken"

@@ -82,6 +82,8 @@ On download runs you will be prompted for:
 | `--dest DIR` | Destination folder (default: script directory) |
 | `--validate-only` | Structural image check of local `*.jpg` only |
 | `--dry-run` | Fetch the ADIF and list pending cards without downloading |
+| `--force` | Re-download every card, ignoring valid files already on disk |
+| `--only-missing` | Download only absent cards (leave corrupt files untouched) |
 | `--log-file PATH` | Append a timestamped log of the run to `PATH` |
 | `--workers N` | Processes for local image validation (default: `min(8, CPU)`) |
 | `--callsign CALL` | eQSL callsign (default: prompt); required with `--password-stdin` |

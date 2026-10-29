@@ -79,6 +79,14 @@ AUTH_ERROR_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Phrases that indicate the range simply has no matching QSOs.
+NO_QSO_RE = re.compile(
+    r"no\s+(?:matching\s+)?(?:qso|qsos|records?|matches|log\s*entries)"
+    r"|nothing\s+(?:was\s+)?found"
+    r"|no\s+(?:data|results?)\s+(?:found|available)",
+    re.IGNORECASE,
+)
+
 _SCRIPT_STYLE_RE = re.compile(r"(?is)<(script|style)[^>]*>.*?</\1>")
 _TAG_RE = re.compile(r"(?s)<[^>]+>")
 
@@ -89,6 +97,10 @@ class EQSLError(RuntimeError):
 
 class EQSLAuthError(EQSLError):
     """Raised when eQSL rejects the supplied credentials."""
+
+
+class EQSLNoQSOError(EQSLError):
+    """Raised when the selected range contains no matching QSOs."""
 
 
 def _visible_text(markup: str) -> str:
@@ -473,6 +485,10 @@ def fetch_inbox_adif(
             raise EQSLAuthError(
                 "Login failed: eQSL rejected your callsign or password. "
                 "Check your credentials (and the QTH nickname, if set) and try again."
+            )
+        if NO_QSO_RE.search(text):
+            raise EQSLNoQSOError(
+                "No QSOs were found for the selected date range (nothing to download)."
             )
         snippet = text[:200] or "(empty response)"
         raise EQSLError(

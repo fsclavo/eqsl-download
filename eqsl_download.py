@@ -188,6 +188,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fetch the ADIF and list pending cards without downloading them.",
     )
+    select = p.add_mutually_exclusive_group()
+    select.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-download every card, ignoring valid files already on disk.",
+    )
+    select.add_argument(
+        "--only-missing",
+        action="store_true",
+        help="Download only absent cards (leave corrupt files untouched).",
+    )
     p.add_argument(
         "--log-file",
         type=Path,
@@ -407,27 +418,35 @@ def main() -> int:
             for name in sorted(collisions):
                 log(f"    collision: {name}")
 
-        log(f"[3/4] Scanning local folder ({dest.name}/) ...")
-        log(f"  validating images (JPEG/PNG, {args.workers} processes) ...")
-        scan_bar = ProgressBar(total)
-        (
-            skipped,
-            corrupt,
-            missing,
-            to_fetch,
-            _corrupt_names,
-            _missing_names,
-        ) = scan_local_qsos(
-            by_name,
-            dest,
-            args.workers,
-            progress=lambda d, t, s: scan_bar.update(d, s),
-        )
-        scan_bar.finish(f"ok={skipped} corrupt={corrupt} missing={missing}")
-        log(
-            f"  summary — valid: {skipped} | corrupt: {corrupt} | "
-            f"missing: {missing} | to download: {len(to_fetch)}"
-        )
+        if args.force:
+            log(f"[3/4] Force mode: skipping local scan; re-downloading {total} card(s)")
+            skipped = corrupt = missing = 0
+            to_fetch = list(by_name.items())
+        else:
+            log(f"[3/4] Scanning local folder ({dest.name}/) ...")
+            log(f"  validating images (JPEG/PNG, {args.workers} processes) ...")
+            scan_bar = ProgressBar(total)
+            (
+                skipped,
+                corrupt,
+                missing,
+                to_fetch,
+                _corrupt_names,
+                missing_names,
+            ) = scan_local_qsos(
+                by_name,
+                dest,
+                args.workers,
+                progress=lambda d, t, s: scan_bar.update(d, s),
+            )
+            scan_bar.finish(f"ok={skipped} corrupt={corrupt} missing={missing}")
+            if args.only_missing:
+                missing_set = set(missing_names)
+                to_fetch = [(n, q) for (n, q) in to_fetch if n in missing_set]
+            log(
+                f"  summary — valid: {skipped} | corrupt: {corrupt} | "
+                f"missing: {missing} | to download: {len(to_fetch)}"
+            )
 
         if args.dry_run:
             log("[dry-run] Nothing will be downloaded.")

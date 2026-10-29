@@ -13,6 +13,7 @@ from eqsl_core import (
     GET_EQSL,
     EQSLAuthError,
     EQSLError,
+    EQSLNoQSOError,
     QSO,
     download_card,
     extract_image_url,
@@ -94,3 +95,12 @@ def test_download_card_from_fixture(requests_mock, tmp_path, png_bytes):
     ok, _ = download_card(make_session(), "u", "p", qso, tmp_path / "card.jpg")
     assert ok is True
     assert (tmp_path / "card.jpg").read_bytes() == png_bytes
+
+
+def test_inbox_no_qso_fixture(requests_mock):
+    requests_mock.get(DOWNLOAD_INBOX, text=_fixture("inbox_no_qso.html"))
+    with pytest.raises(EQSLNoQSOError) as excinfo:
+        fetch_inbox_adif(
+            make_session(), "u", "p", "", date(2024, 1, 1), date(2024, 12, 31)
+        )
+    assert "No QSOs" in str(excinfo.value)
