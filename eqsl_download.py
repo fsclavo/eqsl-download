@@ -29,14 +29,13 @@ from eqsl_core import (
     EQSLError,
     QSO,
     build_by_name,
-    detect_image_kind,
     download_card,
     fetch_inbox_adif,
     format_eta,
     get_version,
-    is_valid_jpeg,
-    list_local_jpgs,
+    list_local_images,
     make_session,
+    normalize_extensions,
     parse_adif,
     scan_local_qsos,
     validate_local_paths,
@@ -208,7 +207,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--dry-run",
         action="store_true",
-        help="Fetch the ADIF and list pending cards without downloading them.",
+        help="Preview: list pending cards (or files to rename) without changing anything.",
     )
     select = p.add_mutually_exclusive_group()
     select.add_argument(
@@ -220,6 +219,12 @@ def parse_args() -> argparse.Namespace:
         "--only-missing",
         action="store_true",
         help="Download only absent cards (leave corrupt files untouched).",
+    )
+    p.add_argument(
+        "--normalize-extensions",
+        action="store_true",
+        help="Rename cards so the extension matches the real image format "
+        "(combine with --dry-run to preview).",
     )
     p.add_argument(
         "--log-file",
@@ -289,8 +294,11 @@ def parse_args() -> argparse.Namespace:
     if has_from ^ has_to:
         p.error("Provide both --from and --to, or neither (with --validate-only).")
 
-    if not args.validate_only and not (has_from and has_to):
-        p.error("Provide --year YEAR or both --from and --to (unless --validate-only).")
+    if not args.validate_only and not args.normalize_extensions and not (has_from and has_to):
+        p.error(
+            "Provide --year YEAR or both --from and --to "
+            "(unless --validate-only or --normalize-extensions)."
+        )
 
     args.from_date: Optional[date] = None
     args.to_date: Optional[date] = None
@@ -311,17 +319,17 @@ def parse_args() -> argparse.Namespace:
 def run_validate_only(args: argparse.Namespace, log: Logger) -> int:
     """Local-only validation: no credentials, no ADIF, no download."""
     dest: Path = args.dest
-    log(f"[validate-only] Scanning local JPGs in {dest} (no login / no download)")
+    log(f"[validate-only] Scanning local images in {dest} (no login / no download)")
     if args.from_date and args.to_date:
         log(f"  QSO date filter: {args.from_date} .. {args.to_date}")
     else:
-        log("  no date filter (all .jpg files in the folder)")
+        log("  no date filter (all image files in the folder)")
 
-    paths = list_local_jpgs(dest, args.from_date, args.to_date)
+    paths = list_local_images(dest, args.from_date, args.to_date)
     log(f"  files to check: {len(paths)}")
 
     if not paths:
-        log("  no .jpg files to validate")
+        log("  no image files to validate")
         log.summary("Done. validate_only ok=0 corrupt=0 total=0")
         return 0
 
@@ -341,39 +349,41 @@ def run_validate_only(args: argparse.Namespace, log: Logger) -> int:
     return 1 if corrupt else 0
 
 
+def run_normalize_extensions(args: argparse.Namespace, log: Logger) -> int:
+    """Rename card files so their extension matches the real image content."""
+    dest: Path = args.dest
+    log(f"[normalize] Checking image extensions in {dest} ...")
+    if args.dry_run:
+        log("  dry run: no files will be renamed")
+    stats = normalize_extensions(dest, dry_run=args.dry_run, log=log)
+    if not stats["checked"]:
+        log.summary("Done. normalize checked=0 renamed=0")
+        return 0
+    log.summary(
+        f"Done. normalize checked={stats['checked']} renamed={stats['renamed']} "
+        f"ok={stats['ok']} conflicts={stats['conflicts']} "
+        f"unsupported={stats['unsupported']}"
+    )
+    return 1 if stats["conflicts"] else 0
+
+
 def _download_one(
     session: requests.Session,
     username: str,
     password: str,
     qso: QSO,
-    path: Path,
+    dest_dir: Path,
+    base_name: str,
     log: Logger,
     max_attempts: int = 2,
 ) -> tuple[bool, str]:
     try:
-        ok, msg = download_card(
-            session, username, password, qso, path,
+        return download_card(
+            session, username, password, qso, dest_dir, base_name,
             log=log, max_attempts=max_attempts,
         )
     except requests.RequestException as exc:
         return False, str(exc)
-
-    if ok and not is_valid_jpeg(path):
-        ok = False
-        try:
-            raw = path.read_bytes()
-            msg = (
-                "Downloaded file failed image validation "
-                f"(kind={detect_image_kind(raw)}, size={len(raw)})"
-            )
-        except OSError:
-            msg = "Downloaded file failed image validation (unreadable)"
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
-
-    return ok, msg
 
 
 def _write_failures(
@@ -401,6 +411,8 @@ def main() -> int:
     try:
         if args.validate_only:
             return run_validate_only(args, log)
+        if args.normalize_extensions:
+            return run_normalize_extensions(args, log)
 
         assert args.from_date is not None and args.to_date is not None
 
@@ -502,7 +514,7 @@ def main() -> int:
             eta = format_eta(left, args.delay) if left else "0s"
             dl_bar.update(i - 1, f"ETA {eta} | {name}")
             ok, msg = _download_one(
-                session, username, password, qso, dest / name, log, args.retries
+                session, username, password, qso, dest, name, log, args.retries
             )
             if ok:
                 downloaded += 1
@@ -525,7 +537,7 @@ def main() -> int:
             for i, (name, qso, _msg) in enumerate(failed_items, start=1):
                 retry_bar.update(i - 1, f"retry | {name}")
                 ok, msg = _download_one(
-                    session, username, password, qso, dest / name, log, args.retries
+                    session, username, password, qso, dest, name, log, args.retries
                 )
                 if ok:
                     downloaded += 1

@@ -109,20 +109,20 @@ def test_write_failures_lists_names(tmp_path):
     assert "a.jpg" in out.read_text(encoding="utf-8")
 
 
-def test_download_one_flags_invalid_image(monkeypatch, tmp_path):
-    def fake_download(session, username, password, qso, path, log=None, **kwargs):
-        path.write_bytes(b"broken")
+def test_download_one_passes_dest_dir_and_base(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_download(session, u, p, qso, dest_dir, base, log=None, **kwargs):
+        captured["args"] = (dest_dir, base)
         return True, "ok"
 
     monkeypatch.setattr(eqsl_download, "download_card", fake_download)
-    target = tmp_path / "x.jpg"
     ok, msg = eqsl_download._download_one(
         None, "u", "p", QSO("W1AW", "20240101", "1200", "20m", "FT8"),
-        target, eqsl_download.Logger(None),
+        tmp_path, "base", eqsl_download.Logger(None),
     )
-    assert ok is False
-    assert "validation" in msg
-    assert not target.exists()
+    assert (ok, msg) == (True, "ok")
+    assert captured["args"] == (tmp_path, "base")
 
 
 def test_download_one_wraps_request_exception(monkeypatch, tmp_path):
@@ -132,7 +132,7 @@ def test_download_one_wraps_request_exception(monkeypatch, tmp_path):
     monkeypatch.setattr(eqsl_download, "download_card", fake_download)
     ok, msg = eqsl_download._download_one(
         None, "u", "p", QSO("W1AW", "20240101", "1200", "20m", "FT8"),
-        tmp_path / "x.jpg", eqsl_download.Logger(None),
+        tmp_path, "x", eqsl_download.Logger(None),
     )
     assert ok is False
     assert "boom" in msg

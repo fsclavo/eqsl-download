@@ -100,13 +100,14 @@ def test_download_card_success(requests_mock, tmp_path, png_bytes):
     requests_mock.get(IMG_URL, content=png_bytes)
 
     qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
-    dest = tmp_path / "card.jpg"
-    ok, msg = download_card(make_session(), "user", "pass", qso, dest)
+    ok, msg = download_card(make_session(), "user", "pass", qso, tmp_path, "card")
 
+    dest = tmp_path / "card.png"  # eQSL served PNG => truthful extension
     assert ok is True
     assert msg == "ok"
     assert dest.read_bytes() == png_bytes
     assert not dest.with_name(dest.name + ".part").exists()
+    assert not (tmp_path / "card.jpg").exists()
 
 
 def test_download_card_atomic_failure_leaves_no_partial(
@@ -120,11 +121,10 @@ def test_download_card_atomic_failure_leaves_no_partial(
 
     monkeypatch.setattr(eqsl_core.os, "replace", boom_replace)
     qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
-    dest = tmp_path / "card.jpg"
     with pytest.raises(OSError):
-        download_card(make_session(), "user", "pass", qso, dest)
-    assert not dest.exists()
-    assert not dest.with_name(dest.name + ".part").exists()
+        download_card(make_session(), "user", "pass", qso, tmp_path, "card")
+    assert not (tmp_path / "card.png").exists()
+    assert not (tmp_path / "card.png.part").exists()
 
 
 def test_download_card_throttling_retries(requests_mock, tmp_path, png_bytes, monkeypatch):
@@ -139,7 +139,7 @@ def test_download_card_throttling_retries(requests_mock, tmp_path, png_bytes, mo
     requests_mock.get(IMG_URL, content=png_bytes)
 
     qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
-    ok, _ = download_card(make_session(), "user", "pass", qso, tmp_path / "card.jpg")
+    ok, _ = download_card(make_session(), "user", "pass", qso, tmp_path, "card")
     assert ok is True
     assert requests_mock.call_count == 3  # throttle + retry + image
 
@@ -147,7 +147,7 @@ def test_download_card_throttling_retries(requests_mock, tmp_path, png_bytes, mo
 def test_download_card_error_response(requests_mock, tmp_path):
     requests_mock.get(GET_EQSL, text="<html>Error: Invalid login</html>")
     qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
-    ok, msg = download_card(make_session(), "user", "pass", qso, tmp_path / "x.jpg")
+    ok, msg = download_card(make_session(), "user", "pass", qso, tmp_path, "x")
     assert ok is False
     assert "Error" in msg
 
@@ -156,7 +156,7 @@ def test_download_card_no_image_url(requests_mock, tmp_path, monkeypatch):
     monkeypatch.setattr(eqsl_core, "THROTTLE_WAIT_SEC", 0)
     requests_mock.get(GET_EQSL, text="<html>no image</html>")
     qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
-    ok, msg = download_card(make_session(), "user", "pass", qso, tmp_path / "x.jpg")
+    ok, msg = download_card(make_session(), "user", "pass", qso, tmp_path, "x")
     assert ok is False
     assert "No image URL" in msg
 
@@ -165,14 +165,14 @@ def test_download_card_network_error(requests_mock, tmp_path):
     requests_mock.get(GET_EQSL, exc=requests.exceptions.ConnectTimeout)
     qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
     with pytest.raises(requests.RequestException):
-        download_card(make_session(), "user", "pass", qso, tmp_path / "x.jpg")
+        download_card(make_session(), "user", "pass", qso, tmp_path, "x")
 
 
 def test_download_card_too_small_image(requests_mock, tmp_path):
     requests_mock.get(GET_EQSL, text=f'<html><img src="{IMG_URL}"></html>')
     requests_mock.get(IMG_URL, content=b"tiny")
     qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
-    ok, msg = download_card(make_session(), "user", "pass", qso, tmp_path / "x.jpg")
+    ok, msg = download_card(make_session(), "user", "pass", qso, tmp_path, "x")
     assert ok is False
     assert "too small" in msg
 
@@ -208,7 +208,7 @@ def test_download_card_sends_expected_params(requests_mock, tmp_path, png_bytes)
     requests_mock.get(IMG_URL, content=png_bytes)
 
     qso = QSO("w1aw/1", "20240315", "142359", "20M", "JT65", "JT65A")
-    download_card(make_session(), "user", "pass", qso, tmp_path / "c.jpg")
+    download_card(make_session(), "user", "pass", qso, tmp_path, "c")
 
     query = {k.lower(): v for k, v in requests_mock.request_history[0].qs.items()}
     assert query["callsignfrom"] == ["w1aw/1"]
@@ -243,7 +243,7 @@ def test_download_card_max_attempts_one(requests_mock, tmp_path, monkeypatch):
     requests_mock.get(GET_EQSL, text="<html>no image</html>")
     qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
     ok, _ = download_card(
-        make_session(), "u", "p", qso, tmp_path / "x.jpg", max_attempts=1
+        make_session(), "u", "p", qso, tmp_path, "x", max_attempts=1
     )
     assert ok is False
     assert requests_mock.call_count == 1
@@ -254,7 +254,27 @@ def test_download_card_max_attempts_two(requests_mock, tmp_path, monkeypatch):
     requests_mock.get(GET_EQSL, text="<html>no image</html>")
     qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
     ok, _ = download_card(
-        make_session(), "u", "p", qso, tmp_path / "x.jpg", max_attempts=2
+        make_session(), "u", "p", qso, tmp_path, "x", max_attempts=2
     )
     assert ok is False
     assert requests_mock.call_count == 2
+
+
+def test_download_card_rejects_invalid_image_content(requests_mock, tmp_path):
+    requests_mock.get(GET_EQSL, text=f'<html><img src="{IMG_URL}"></html>')
+    requests_mock.get(IMG_URL, content=b"\xff\xd8\xff" + b"\x00" * 200)
+    qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
+    ok, msg = download_card(make_session(), "user", "pass", qso, tmp_path, "x")
+    assert ok is False
+    assert "failed validation" in msg.lower()
+    assert not any(tmp_path.iterdir())
+
+
+def test_download_card_rejects_unsupported_format(requests_mock, tmp_path):
+    requests_mock.get(GET_EQSL, text=f'<html><img src="{IMG_URL}"></html>')
+    requests_mock.get(IMG_URL, content=b"GIF89a" + b"\x00" * 200)
+    qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
+    ok, msg = download_card(make_session(), "user", "pass", qso, tmp_path, "x")
+    assert ok is False
+    assert "Unsupported image format" in msg
+    assert not any(tmp_path.iterdir())

@@ -31,10 +31,10 @@ def test_is_valid_jpeg_on_directory_returns_false(tmp_path):
     assert is_valid_jpeg(tmp_path) is False
 
 
-def test_classify_zero_byte_file_is_missing(tmp_path):
+def test_classify_zero_byte_file_is_corrupt(tmp_path):
     (tmp_path / "zero.jpg").write_bytes(b"")
     status, _, _ = classify_local_file("zero.jpg", _qso(), tmp_path)
-    assert status == "missing"
+    assert status == "corrupt"
 
 
 def test_classify_handles_oserror(monkeypatch, tmp_path):

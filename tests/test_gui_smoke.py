@@ -106,7 +106,7 @@ def test_validate_worker_uses_date_range(monkeypatch, tmp_path):
             calls["args"] = (dest, d_from, d_to)
             return []
 
-        monkeypatch.setattr(eqsl_gui, "list_local_jpgs", fake_list)
+        monkeypatch.setattr(eqsl_gui, "list_local_images", fake_list)
         d_from = eqsl_gui.date(2024, 1, 1)
         d_to = eqsl_gui.date(2024, 12, 31)
         app._validate_worker(tmp_path, (d_from, d_to))
@@ -232,8 +232,8 @@ def test_download_worker_success(monkeypatch, gui_app, tmp_path, jpeg_bytes):
     monkeypatch.setattr(eqsl_gui, "GET_DELAY_SEC", 0)
     monkeypatch.setattr(eqsl_gui, "fetch_inbox_adif", lambda *a, **k: ADIF)
 
-    def fake_download(session, u, p, qso, path, log=None, **kwargs):
-        path.write_bytes(jpeg_bytes)
+    def fake_download(session, u, p, qso, dest_dir, base, log=None, **kwargs):
+        (dest_dir / (base + ".jpg")).write_bytes(jpeg_bytes)
         return True, "ok"
 
     monkeypatch.setattr(eqsl_gui, "download_card", fake_download)
@@ -316,7 +316,7 @@ def test_download_worker_retries_and_writes_failures(monkeypatch, gui_app, tmp_p
 def test_validate_worker_counts(monkeypatch, gui_app, tmp_path):
     app, _root = gui_app
     monkeypatch.setattr(
-        eqsl_gui, "list_local_jpgs", lambda dest, d_from, d_to: [tmp_path / "a.jpg"]
+        eqsl_gui, "list_local_images", lambda dest, d_from, d_to: [tmp_path / "a.jpg"]
     )
     monkeypatch.setattr(
         eqsl_gui, "validate_local_paths", lambda paths, workers, progress=None: (1, 1, ["b.jpg"])

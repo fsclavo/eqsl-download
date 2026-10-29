@@ -7,6 +7,7 @@ from eqsl_core import (
     _is_valid_jpeg_bytes,
     _is_valid_png_bytes,
     detect_image_kind,
+    image_extension,
     is_valid_jpeg,
 )
 
@@ -120,3 +121,10 @@ def test_jpeg_non_sos_segment_is_skipped():
     data = SOI + b"\xff\xe0\x00\x02" + b"\xff\xd9"
     assert _is_valid_jpeg_bytes(data) is False
 
+
+
+def test_image_extension_mapping():
+    assert image_extension("jpeg") == ".jpg"
+    assert image_extension("png") == ".png"
+    assert image_extension("gif") is None
+    assert image_extension("unknown") is None

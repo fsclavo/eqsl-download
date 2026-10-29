@@ -63,11 +63,16 @@ HREF_ADI_RE = re.compile(
     r'href=["\']([^"\']+\.(?:adi|txt))["\']',
     re.IGNORECASE,
 )
-# MYCALL-YYYYMMDD_HHMM-THEIRCALL-band-MODE.jpg
-LOCAL_JPG_DATE_RE = re.compile(
-    r"^[^-]+-(\d{8})_\d{4}-.+\.jpg$",
+# MYCALL-YYYYMMDD_HHMM-THEIRCALL-band-MODE.<jpg|png>
+IMAGE_EXTENSIONS = (".jpg", ".png")
+IMAGE_EXT_BY_KIND = {"jpeg": ".jpg", "png": ".png"}
+
+LOCAL_IMAGE_DATE_RE = re.compile(
+    r"^[^-]+-(\d{8})_\d{4}-.+\.(?:jpe?g|png)$",
     re.IGNORECASE,
 )
+# Backwards-compatible alias for older imports.
+LOCAL_JPG_DATE_RE = LOCAL_IMAGE_DATE_RE
 
 # Phrases that indicate eQSL rejected the credentials (login page / error).
 AUTH_ERROR_RE = re.compile(
@@ -151,13 +156,18 @@ class QSO:
             return "JT9"
         return self.mode or self.submode
 
-    def filename(self, mycall: str) -> str:
+    def base_name(self, mycall: str) -> str:
+        """Canonical QSO identity: filename without extension."""
         my = sanitize_call(mycall)
         their = sanitize_call(self.call)
         band = self.band.lower()
         mode = self.get_mode()
-        name = f"{my}-{self.qso_date}_{self.time_hhmm}-{their}-{band}-{mode}.jpg"
+        name = f"{my}-{self.qso_date}_{self.time_hhmm}-{their}-{band}-{mode}"
         return name.replace("\\", "_").replace("/", "_")
+
+    def filename(self, mycall: str) -> str:
+        """Legacy helper; the real extension depends on the downloaded bytes."""
+        return self.base_name(mycall) + ".jpg"
 
 
 def sanitize_call(call: str) -> str:
@@ -273,8 +283,8 @@ def _is_valid_image_bytes(data: bytes) -> bool:
     return False
 
 
-def is_valid_jpeg(path: Path) -> bool:
-    """Valid eQSL card graphic (JPEG or PNG). Name kept for call-site stability."""
+def is_valid_image(path: Path) -> bool:
+    """Valid eQSL card graphic (JPEG or PNG), detected by content."""
     try:
         data = path.read_bytes()
     except OSError:
@@ -284,17 +294,54 @@ def is_valid_jpeg(path: Path) -> bool:
     return _is_valid_image_bytes(data)
 
 
+# Backwards-compatible alias (the old name was misleading).
+is_valid_jpeg = is_valid_image
+
+
+def image_extension(kind: str) -> Optional[str]:
+    """Map a detected content kind to the canonical file extension."""
+    return IMAGE_EXT_BY_KIND.get(kind)
+
+
+def _strip_image_extension(name: str) -> str:
+    """Accept either a base name or a legacy filename and return the base."""
+    lowered = name.lower()
+    for ext in IMAGE_EXTENSIONS:
+        if lowered.endswith(ext):
+            return name[: -len(ext)]
+    return name
+
+
+def existing_image_paths(dest_dir: Path, base_name: str) -> list[Path]:
+    """Return all existing files for a base name across supported extensions."""
+    base = _strip_image_extension(base_name)
+    paths: list[Path] = []
+    for ext in IMAGE_EXTENSIONS:
+        candidate = dest_dir / (base + ext)
+        try:
+            if candidate.is_file():
+                paths.append(candidate)
+        except OSError:
+            continue
+    return paths
+
+
 def classify_local_file(name: str, qso: QSO, dest_dir: Path) -> tuple[str, str, QSO]:
-    """Return (status, name, qso) where status is ok|corrupt|missing."""
-    path = dest_dir / name
-    try:
-        if path.is_file() and path.stat().st_size > 0:
-            if is_valid_jpeg(path):
-                return "ok", name, qso
-            return "corrupt", name, qso
-    except OSError:
-        return "missing", name, qso
-    return "missing", name, qso
+    """Return (status, base_name, qso) where status is ok|corrupt|missing.
+
+    A QSO is satisfied if any supported extension exists and is a valid image.
+    """
+    base = _strip_image_extension(name)
+    candidates = existing_image_paths(dest_dir, base)
+    if not candidates:
+        return "missing", base, qso
+    for path in candidates:
+        try:
+            if path.stat().st_size > 0 and is_valid_image(path):
+                return "ok", base, qso
+        except OSError:
+            continue
+    return "corrupt", base, qso
 
 
 def parse_adif(text: str) -> list[QSO]:
@@ -332,36 +379,38 @@ def parse_adif(text: str) -> list[QSO]:
 
 
 def build_by_name(qsos: list[QSO], mycall: str) -> tuple[dict[str, QSO], list[str]]:
-    """Map target filename -> QSO, reporting filenames that collide.
+    """Map canonical base name (no extension) -> QSO, reporting collisions.
 
-    Filenames carry only minute precision, so two QSOs sharing call, date,
-    band, mode and minute map to the same file. The last record wins (legacy
+    Names carry only minute precision, so two QSOs sharing call, date, band,
+    mode and minute map to the same base name. The last record wins (legacy
     behaviour) but every collision is returned so callers can warn the user
     instead of silently dropping cards.
     """
     by_name: dict[str, QSO] = {}
     collisions: list[str] = []
     for qso in qsos:
-        name = qso.filename(mycall)
+        name = qso.base_name(mycall)
         if name in by_name:
             collisions.append(name)
         by_name[name] = qso
     return by_name, collisions
 
 
-def list_local_jpgs(
+def list_local_images(
     dest_dir: Path,
     d_from: Optional[date] = None,
     d_to: Optional[date] = None,
 ) -> list[Path]:
-    """List *.jpg in dest_dir; optional filter by QSO date embedded in filename."""
-    files = sorted(dest_dir.glob("*.jpg"))
+    """List supported image files; optional filter by QSO date in the name."""
+    files = sorted(
+        path for ext in IMAGE_EXTENSIONS for path in dest_dir.glob("*" + ext)
+    )
     if d_from is None and d_to is None:
         return files
 
     selected: list[Path] = []
     for path in files:
-        m = LOCAL_JPG_DATE_RE.match(path.name)
+        m = LOCAL_IMAGE_DATE_RE.match(path.name)
         if not m:
             continue
         try:
@@ -375,6 +424,59 @@ def list_local_jpgs(
             continue
         selected.append(path)
     return selected
+
+
+# Backwards-compatible alias.
+list_local_jpgs = list_local_images
+
+
+def normalize_extensions(
+    dest_dir: Path,
+    dry_run: bool = False,
+    log: Optional[LogFn] = None,
+) -> dict[str, int]:
+    """Rename card files whose extension does not match their real content.
+
+    Only files following the card naming pattern are touched, and an existing
+    target is never overwritten (reported as a conflict).
+    """
+    stats = {"checked": 0, "renamed": 0, "ok": 0, "conflicts": 0, "unsupported": 0}
+    paths = sorted(
+        path for ext in IMAGE_EXTENSIONS for path in dest_dir.glob("*" + ext)
+    )
+    for path in paths:
+        if not LOCAL_IMAGE_DATE_RE.match(path.name):
+            continue
+        stats["checked"] += 1
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue
+
+        kind = detect_image_kind(data)
+        want = image_extension(kind)
+        if want is None:
+            stats["unsupported"] += 1
+            continue
+        if path.suffix.lower() == want:
+            stats["ok"] += 1
+            continue
+        if not _is_valid_image_bytes(data):
+            continue
+
+        base = path.name[: -len(path.suffix)]
+        target = dest_dir / (base + want)
+        if target.exists():
+            stats["conflicts"] += 1
+            _log(log, f"  conflict: {path.name} (target {target.name} exists)")
+            continue
+        if dry_run:
+            _log(log, f"  would rename {path.name} -> {target.name}")
+            continue
+        os.replace(path, target)
+        _log(log, f"  renamed {path.name} -> {target.name}")
+        stats["renamed"] += 1
+    return stats
 
 
 def validate_local_paths(
@@ -393,7 +495,7 @@ def validate_local_paths(
     done = 0
 
     with ProcessPoolExecutor(max_workers=workers, mp_context=MP_CONTEXT) as pool:
-        futures = {pool.submit(is_valid_jpeg, path): path for path in paths}
+        futures = {pool.submit(is_valid_image, path): path for path in paths}
         for fut in as_completed(futures):
             path = futures[fut]
             if fut.result():
@@ -527,12 +629,17 @@ def download_card(
     username: str,
     password: str,
     qso: QSO,
-    dest: Path,
+    dest_dir: Path,
+    base_name: str,
     log: Optional[LogFn] = None,
     max_attempts: int = 2,
     throttle_wait: Optional[float] = None,
 ) -> tuple[bool, str]:
-    """Fetch one card graphic. Returns (ok, message)."""
+    """Fetch one card graphic and save it with its real extension.
+
+    The bytes are written unchanged; the extension is derived from the detected
+    content kind (``.jpg`` for JPEG, ``.png`` for PNG).
+    """
     params = {
         "Username": username,
         "Password": password,
@@ -576,13 +683,25 @@ def download_card(
 
         ir = session.get(img_url, timeout=60)
         ir.raise_for_status()
-        if not ir.content or len(ir.content) < 100:
+        content = ir.content
+        if not content or len(content) < 100:
             return False, "Image download too small / empty"
 
+        kind = detect_image_kind(content)
+        extension = image_extension(kind)
+        if extension is None:
+            return False, f"Unsupported image format ({kind})"
+        if not _is_valid_image_bytes(content):
+            return False, (
+                "Downloaded image failed validation "
+                f"(kind={kind}, size={len(content)})"
+            )
+
+        dest = dest_dir / (_strip_image_extension(base_name) + extension)
         # Atomic write: never leave a half-written card behind.
         tmp = dest.with_name(dest.name + ".part")
         try:
-            tmp.write_bytes(ir.content)
+            tmp.write_bytes(content)
             os.replace(tmp, dest)
         except OSError:
             tmp.unlink(missing_ok=True)

@@ -21,7 +21,7 @@ def test_build_by_name_detects_same_minute_collision():
     q2 = QSO("W1AW", "20240315", "142359", "20m", "FT8")
     by_name, collisions = build_by_name([q1, q2], "LU1ABC")
 
-    expected = "LU1ABC-20240315_1423-W1AW-20m-FT8.jpg"
+    expected = "LU1ABC-20240315_1423-W1AW-20m-FT8"
     assert expected in by_name
     assert collisions == [expected]
     # Last record wins (documented legacy behaviour).

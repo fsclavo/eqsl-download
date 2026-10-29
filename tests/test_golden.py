@@ -92,9 +92,9 @@ def test_download_card_from_fixture(requests_mock, tmp_path, png_bytes):
     requests_mock.get(re.compile(r".*/CFFileServlet/_cf_image/.*"), content=png_bytes)
 
     qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
-    ok, _ = download_card(make_session(), "u", "p", qso, tmp_path / "card.jpg")
+    ok, _ = download_card(make_session(), "u", "p", qso, tmp_path, "card")
     assert ok is True
-    assert (tmp_path / "card.jpg").read_bytes() == png_bytes
+    assert (tmp_path / "card.png").read_bytes() == png_bytes
 
 
 def test_inbox_no_qso_fixture(requests_mock):

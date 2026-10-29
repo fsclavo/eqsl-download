@@ -86,6 +86,7 @@ On download runs you will be prompted for:
 | `--dry-run` | Fetch the ADIF and list pending cards without downloading |
 | `--force` | Re-download every card, ignoring valid files already on disk |
 | `--only-missing` | Download only absent cards (leave corrupt files untouched) |
+| `--normalize-extensions` | Rename cards so the extension matches the real image format (preview with `--dry-run`) |
 | `--log-file PATH` | Append a timestamped log of the run to `PATH` |
 | `--workers N` | Processes for local image validation (default: `min(8, CPU)`) |
 | `--callsign CALL` | eQSL callsign (default: prompt); required with `--password-stdin` |
@@ -143,11 +144,20 @@ the same file — the tool keeps one card and prints a collision warning.
 ## Output filenames
 
 ```
-MYCALL-YYYYMMDD_HHMM-THEIRCALL-band-MODE.jpg
+MYCALL-YYYYMMDD_HHMM-THEIRCALL-band-MODE.<jpg|png>
 ```
 
 Example: `LU1ABC-20240315_1423-W1AW-20m-FT8.jpg`.
 Callsigns are uppercased; `/` and `\` become `_`.
+
+The extension reflects the **real image format** returned by eQSL: JPEG is
+saved as `.jpg` and PNG as `.png`, with the bytes stored unchanged (no
+re-encoding). The QSO identity is the filename **without** the extension, so a
+card is recognised whether it is `.jpg` or `.png`.
+
+Legacy note: older versions always wrote `.jpg`, even for PNG content. Those
+files are still recognised; run `--normalize-extensions` (preview with
+`--dry-run`) to rename them to the correct extension.
 
 ## Project structure
 

@@ -32,3 +32,10 @@ def test_get_mode_normalizes_jt9_submode():
 def test_get_mode_passthrough_for_regular_modes():
     qso = QSO("W1AW", "20240315", "1423", "20m", "SSB")
     assert qso.get_mode() == "SSB"
+
+
+def test_base_name_has_no_extension():
+    qso = QSO("w1aw/1", "20240315", "1423", "20M", "FT8")
+    base = "LU1ABC_P-20240315_1423-W1AW_1-20m-FT8"
+    assert qso.base_name("lu1abc/p") == base
+    assert qso.filename("lu1abc/p") == base + ".jpg"

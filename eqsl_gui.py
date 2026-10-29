@@ -30,12 +30,10 @@ from eqsl_core import (
     EQSLError,
     QSO,
     build_by_name,
-    detect_image_kind,
     download_card,
     fetch_inbox_adif,
     get_version,
-    is_valid_jpeg,
-    list_local_jpgs,
+    list_local_images,
     make_session,
     parse_adif,
     scan_local_qsos,
@@ -515,8 +513,8 @@ class EQSLCardGUI:
 
     def _validate_worker(self, dest: Path, dates: tuple[date, date]) -> None:
         try:
-            paths = list_local_jpgs(dest, dates[0], dates[1])
-            self._emit("log", f".jpg files in range: {len(paths)}")
+            paths = list_local_images(dest, dates[0], dates[1])
+            self._emit("log", f"image files in range: {len(paths)}")
             if not paths:
                 self._emit(
                     "done",
@@ -551,29 +549,13 @@ class EQSLCardGUI:
             if self.cancel_event.is_set():
                 break
             self._emit("status", f"[{i}/{total}] {name}")
-            path = dest / name
             try:
                 ok, msg = download_card(
-                    session, callsign, password, qso, path,
+                    session, callsign, password, qso, dest, name,
                     log=lambda m: self._emit("log", m),
                 )
             except requests.RequestException as exc:
                 ok, msg = False, str(exc)
-
-            if ok and not is_valid_jpeg(path):
-                ok = False
-                try:
-                    raw = path.read_bytes()
-                    msg = (
-                        "Downloaded file failed image validation "
-                        f"(kind={detect_image_kind(raw)}, size={len(raw)})"
-                    )
-                except OSError:
-                    msg = "Downloaded file unreadable"
-                try:
-                    path.unlink(missing_ok=True)
-                except OSError:
-                    pass
 
             if ok:
                 downloaded += 1

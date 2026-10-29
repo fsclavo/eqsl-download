@@ -138,7 +138,8 @@ def test_failed_downloads_are_exported(monkeypatch, tmp_path, sample_adif):
     assert eqsl_download.main() == 1
     failures = list(tmp_path.glob("eqsl_failed_*.txt"))
     assert failures
-    assert ".jpg" in failures[0].read_text(encoding="utf-8")
+    text = failures[0].read_text(encoding="utf-8")
+    assert "LU1ABC-20240315_1423-W1AW-20m-FT8" in text
 
 
 
@@ -215,6 +216,8 @@ def test_force_and_only_missing_are_exclusive(monkeypatch):
 
 _NAME_A = "LU1ABC-20240315_1423-W1AW-20m-FT8.jpg"
 _NAME_B = "LU1ABC-20240316_1423-LU1ABC-40m-JT65.jpg"
+_BASE_A = _NAME_A[:-4]
+_BASE_B = _NAME_B[:-4]
 
 
 def test_force_redownloads_even_when_valid(monkeypatch, tmp_path, sample_adif, jpeg_bytes):
@@ -222,14 +225,14 @@ def test_force_redownloads_even_when_valid(monkeypatch, tmp_path, sample_adif, j
     _patch_download_run(monkeypatch, tmp_path, sample_adif, "--force")
     calls = []
 
-    def fake_download(session, u, p, qso, path, log=None, **kwargs):
-        calls.append(path.name)
-        path.write_bytes(jpeg_bytes)
+    def fake_download(session, u, p, qso, dest_dir, base, log=None, **kwargs):
+        calls.append(base)
+        (dest_dir / (base + ".jpg")).write_bytes(jpeg_bytes)
         return True, "ok"
 
     monkeypatch.setattr(eqsl_download, "download_card", fake_download)
     assert eqsl_download.main() == 0
-    assert set(calls) == {_NAME_A, _NAME_B}
+    assert set(calls) == {_BASE_A, _BASE_B}
 
 
 def test_only_missing_skips_valid(monkeypatch, tmp_path, sample_adif, jpeg_bytes):
@@ -237,14 +240,14 @@ def test_only_missing_skips_valid(monkeypatch, tmp_path, sample_adif, jpeg_bytes
     _patch_download_run(monkeypatch, tmp_path, sample_adif, "--only-missing")
     calls = []
 
-    def fake_download(session, u, p, qso, path, log=None, **kwargs):
-        calls.append(path.name)
-        path.write_bytes(jpeg_bytes)
+    def fake_download(session, u, p, qso, dest_dir, base, log=None, **kwargs):
+        calls.append(base)
+        (dest_dir / (base + ".jpg")).write_bytes(jpeg_bytes)
         return True, "ok"
 
     monkeypatch.setattr(eqsl_download, "download_card", fake_download)
     assert eqsl_download.main() == 0
-    assert calls == [_NAME_B]
+    assert calls == [_BASE_B]
 
 
 def test_only_missing_does_not_redownload_corrupt(monkeypatch, tmp_path, sample_adif, jpeg_bytes):
@@ -253,9 +256,9 @@ def test_only_missing_does_not_redownload_corrupt(monkeypatch, tmp_path, sample_
     _patch_download_run(monkeypatch, tmp_path, sample_adif, "--only-missing")
     calls = []
 
-    def fake_download(session, u, p, qso, path, log=None, **kwargs):
-        calls.append(path.name)
-        path.write_bytes(jpeg_bytes)
+    def fake_download(session, u, p, qso, dest_dir, base, log=None, **kwargs):
+        calls.append(base)
+        (dest_dir / (base + ".jpg")).write_bytes(jpeg_bytes)
         return True, "ok"
 
     monkeypatch.setattr(eqsl_download, "download_card", fake_download)
@@ -274,3 +277,11 @@ def test_quiet_validate_only_prints_summary_only(tmp_path):
     assert proc.returncode == 0
     assert "Done. validate_only" in proc.stdout
     assert "files to check" not in proc.stdout
+
+
+def test_normalize_extensions_cli(tmp_path, png_bytes):
+    (tmp_path / "LU1-20240101_0000-X-20m-FT8.jpg").write_bytes(png_bytes)
+    proc = _run_cli("--normalize-extensions", "--dest", str(tmp_path))
+    assert proc.returncode == 0
+    assert "renamed=1" in proc.stdout
+    assert (tmp_path / "LU1-20240101_0000-X-20m-FT8.png").exists()

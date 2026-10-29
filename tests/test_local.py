@@ -8,6 +8,7 @@ from eqsl_core import (
     QSO,
     build_by_name,
     classify_local_file,
+    list_local_images,
     list_local_jpgs,
     parse_adif,
     scan_local_qsos,
@@ -46,7 +47,7 @@ def test_list_local_jpgs_ignores_non_conforming_names(write_file, jpeg_bytes):
 def test_classify_local_file_states(write_file, jpeg_bytes):
     dest = write_file(NAME_A, jpeg_bytes).parent
     status, name, qso = classify_local_file(NAME_A, _qso("W1AW", "20240315"), dest)
-    assert (status, name) == ("ok", NAME_A)
+    assert (status, name) == ("ok", NAME_A[:-4])
     assert qso.call == "W1AW"
 
     write_file("broken-20240101_0000-X-20m-FT8.jpg", b"not an image")
@@ -76,10 +77,13 @@ def test_scan_local_qsos_classifies_and_lists_pending(write_file, jpeg_bytes):
     write_file(NAME_A, jpeg_bytes)
     write_file(NAME_B, b"broken")
 
+    base_a = NAME_A[:-4]
+    base_b = NAME_B[:-4]
+    base_c = "LU1-20240317_1200-N0CALL-15m-FT8"
     by_name = {
-        NAME_A: _qso("W1AW", "20240315"),
-        NAME_B: _qso("K1ZZ", "20240316"),
-        "LU1-20240317_1200-N0CALL-15m-FT8.jpg": _qso("N0CALL", "20240317"),
+        base_a: _qso("W1AW", "20240315"),
+        base_b: _qso("K1ZZ", "20240316"),
+        base_c: _qso("N0CALL", "20240317"),
     }
     dest = write_file(NAME_A, jpeg_bytes).parent
 
@@ -89,12 +93,9 @@ def test_scan_local_qsos_classifies_and_lists_pending(write_file, jpeg_bytes):
     assert skipped == 1
     assert corrupt == 1
     assert missing == 1
-    assert {name for name, _ in to_fetch} == {
-        NAME_B,
-        "LU1-20240317_1200-N0CALL-15m-FT8.jpg",
-    }
-    assert corrupt_names == [NAME_B]
-    assert missing_names == ["LU1-20240317_1200-N0CALL-15m-FT8.jpg"]
+    assert {name for name, _ in to_fetch} == {base_b, base_c}
+    assert corrupt_names == [base_b]
+    assert missing_names == [base_c]
 
 
 def test_end_to_end_adif_to_scan(tmp_path, jpeg_bytes):
@@ -108,10 +109,25 @@ def test_end_to_end_adif_to_scan(tmp_path, jpeg_bytes):
     assert len(by_name) == 2
 
     present = next(iter(by_name))
-    (tmp_path / present).write_bytes(jpeg_bytes)
+    (tmp_path / (present + ".jpg")).write_bytes(jpeg_bytes)
 
     skipped, corrupt, missing, to_fetch, _, _ = scan_local_qsos(by_name, tmp_path, 1)
     assert skipped == 1
     assert corrupt == 0
     assert missing == 1
-    assert [name for name, _qso in to_fetch] != [present]
+    assert present not in [name for name, _qso in to_fetch]
+
+
+def test_classify_finds_png_variant(write_file, png_bytes):
+    base = NAME_A[:-4]
+    path = write_file(base + ".png", png_bytes)
+    status, name, _ = classify_local_file(base, _qso("W1AW", "20240315"), path.parent)
+    assert status == "ok"
+    assert name == base
+
+
+def test_list_local_images_includes_png(write_file, png_bytes):
+    base = NAME_A[:-4]
+    dest = write_file(base + ".png", png_bytes).parent
+    names = [p.name for p in list_local_images(dest)]
+    assert names == [base + ".png"]
