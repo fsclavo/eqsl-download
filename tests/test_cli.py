@@ -105,15 +105,17 @@ def test_validate_only_writes_log_file(tmp_path):
 def _patch_download_run(monkeypatch, tmp_path, adif_text, *extra_argv):
     monkeypatch.setattr(
         sys, "argv",
-        ["eqsl_download.py", "--year", "2024", "--dest", str(tmp_path), *extra_argv],
+        [
+            "eqsl_download.py", "--year", "2024", "--dest", str(tmp_path),
+            "--delay", "0", *extra_argv,
+        ],
     )
     monkeypatch.setattr(
-        eqsl_download, "prompt_credentials", lambda: ("LU1ABC", "pw", "")
+        eqsl_download, "resolve_credentials", lambda args: ("LU1ABC", "pw", "")
     )
     monkeypatch.setattr(
         eqsl_download, "fetch_inbox_adif", lambda *a, **k: adif_text
     )
-    monkeypatch.setattr(eqsl_download, "GET_DELAY_SEC", 0)
 
 
 def test_dry_run_does_not_download(monkeypatch, tmp_path, sample_adif):
@@ -138,3 +140,69 @@ def test_failed_downloads_are_exported(monkeypatch, tmp_path, sample_adif):
     assert failures
     assert ".jpg" in failures[0].read_text(encoding="utf-8")
 
+
+
+def test_new_cli_flags(monkeypatch):
+    args = _parse(
+        monkeypatch, "--year", "2024", "--callsign", "LU1ABC", "--qth", "Home",
+        "--password-stdin", "--retries", "3", "--delay", "0",
+    )
+    assert args.callsign == "LU1ABC"
+    assert args.qth == "Home"
+    assert args.password_stdin is True
+    assert args.retries == 3
+    assert args.delay == 0.0
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ("--year", "2024", "--retries", "0"),
+        ("--year", "2024", "--delay", "-1"),
+    ],
+)
+def test_bad_retries_or_delay(monkeypatch, argv):
+    with pytest.raises(SystemExit):
+        _parse(monkeypatch, *argv)
+
+
+def test_resolve_credentials_stdin(monkeypatch):
+    import io
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO("secret\n"))
+    args = SimpleNamespace(password_stdin=True, callsign="LU1ABC", qth="Home")
+    assert eqsl_download.resolve_credentials(args) == ("LU1ABC", "secret", "Home")
+
+
+def test_resolve_credentials_stdin_requires_callsign(monkeypatch):
+    import io
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO("secret\n"))
+    args = SimpleNamespace(password_stdin=True, callsign=None, qth=None)
+    with pytest.raises(SystemExit):
+        eqsl_download.resolve_credentials(args)
+
+
+def test_resolve_credentials_interactive(monkeypatch):
+    from types import SimpleNamespace
+
+    answers = iter(["LU1ABC", "Home"])
+    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+    monkeypatch.setattr(eqsl_download.getpass, "getpass", lambda *a: "pw")
+    args = SimpleNamespace(password_stdin=False, callsign=None, qth=None)
+    assert eqsl_download.resolve_credentials(args) == ("LU1ABC", "pw", "Home")
+
+
+def test_resolve_credentials_interactive_uses_flags(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(eqsl_download.getpass, "getpass", lambda *a: "pw")
+
+    def no_input(*a):
+        raise AssertionError("should not prompt")
+
+    monkeypatch.setattr("builtins.input", no_input)
+    args = SimpleNamespace(password_stdin=False, callsign="LU1ABC", qth="Home")
+    assert eqsl_download.resolve_credentials(args) == ("LU1ABC", "pw", "Home")

@@ -84,6 +84,11 @@ On download runs you will be prompted for:
 | `--dry-run` | Fetch the ADIF and list pending cards without downloading |
 | `--log-file PATH` | Append a timestamped log of the run to `PATH` |
 | `--workers N` | Processes for local image validation (default: `min(8, CPU)`) |
+| `--callsign CALL` | eQSL callsign (default: prompt); required with `--password-stdin` |
+| `--qth NAME` | QTH nickname (optional; suppresses the prompt when given) |
+| `--password-stdin` | Read the password from the first line of stdin (non-interactive) |
+| `--retries N` | Attempts per card on throttle / no-image (default: `2`) |
+| `--delay SECONDS` | Delay between GeteQSL calls (default: `11`) |
 | `--version` | Print the version and exit |
 
 Rules:
@@ -91,6 +96,13 @@ Rules:
 - Use either `--year` **or** `--from`/`--to`, not both.
 - Download mode requires a date range.
 - `--validate-only` may omit dates (scans every `*.jpg` in the folder).
+
+Non-interactive example (e.g. cron; keep the secret out of the command line):
+
+```bash
+printf '%s\n' "$EQSL_PASSWORD" | python3 eqsl_download.py --year 2024 \
+  --callsign LU1ABC --qth Home --password-stdin --delay 12 --retries 3
+```
 
 Exit codes: `0` on success; `1` if any download failed, or if `--validate-only`
 found corrupt files.

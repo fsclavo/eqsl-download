@@ -236,3 +236,25 @@ def test_does_not_retry_on_400(http_server):
     assert response.status_code == 400
     assert state["count"] == 1
 
+
+
+def test_download_card_max_attempts_one(requests_mock, tmp_path, monkeypatch):
+    monkeypatch.setattr(eqsl_core, "THROTTLE_WAIT_SEC", 0)
+    requests_mock.get(GET_EQSL, text="<html>no image</html>")
+    qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
+    ok, _ = download_card(
+        make_session(), "u", "p", qso, tmp_path / "x.jpg", max_attempts=1
+    )
+    assert ok is False
+    assert requests_mock.call_count == 1
+
+
+def test_download_card_max_attempts_two(requests_mock, tmp_path, monkeypatch):
+    monkeypatch.setattr(eqsl_core, "THROTTLE_WAIT_SEC", 0)
+    requests_mock.get(GET_EQSL, text="<html>no image</html>")
+    qso = QSO("W1AW", "20240315", "1423", "20m", "FT8")
+    ok, _ = download_card(
+        make_session(), "u", "p", qso, tmp_path / "x.jpg", max_attempts=2
+    )
+    assert ok is False
+    assert requests_mock.call_count == 2

@@ -403,11 +403,11 @@ def eqsl_date(d: date) -> str:
     return d.strftime("%m/%d/%Y")
 
 
-def format_eta(remaining: int, delay_sec: int = GET_DELAY_SEC) -> str:
-    """Rough ETA for remaining downloads given fixed delay between them."""
+def format_eta(remaining: int, delay_sec: float = GET_DELAY_SEC) -> str:
+    """Rough ETA for remaining downloads given a fixed delay between them."""
     if remaining <= 0:
         return "0s"
-    secs = remaining * delay_sec
+    secs = int(remaining * delay_sec)
     if secs < 60:
         return f"{secs}s"
     mins, sec = divmod(secs, 60)
@@ -513,6 +513,8 @@ def download_card(
     qso: QSO,
     dest: Path,
     log: Optional[LogFn] = None,
+    max_attempts: int = 2,
+    throttle_wait: Optional[float] = None,
 ) -> tuple[bool, str]:
     """Fetch one card graphic. Returns (ok, message)."""
     params = {
@@ -528,16 +530,18 @@ def download_card(
         "QSOMode": qso.get_mode(),
     }
 
-    for attempt in range(2):
+    wait = THROTTLE_WAIT_SEC if throttle_wait is None else throttle_wait
+    attempts = max(1, int(max_attempts))
+    for attempt in range(attempts):
         r = session.get(GET_EQSL, params=params, timeout=60)
         r.raise_for_status()
         html = r.text
 
         if "Throttling invoked" in html:
-            _log(log, f"Throttling detected; waiting {THROTTLE_WAIT_SEC}s and retrying...")
+            _log(log, f"Throttling detected; waiting {wait}s and retrying...")
             import time as _time
 
-            _time.sleep(THROTTLE_WAIT_SEC)
+            _time.sleep(wait)
             continue
 
         if "Error:" in html:
@@ -547,10 +551,10 @@ def download_card(
 
         img_url = extract_image_url(html, r.url)
         if not img_url:
-            if attempt == 0:
+            if attempt == 0 and attempts > 1:
                 import time as _time
 
-                _time.sleep(THROTTLE_WAIT_SEC)
+                _time.sleep(wait)
                 continue
             return False, "No image URL in GeteQSL response"
 
@@ -569,7 +573,7 @@ def download_card(
             raise
         return True, "ok"
 
-    return False, "Failed after throttle retry"
+    return False, f"Failed after {attempts} attempt(s)"
 
 
 def scan_local_qsos(

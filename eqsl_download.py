@@ -131,6 +131,34 @@ def prompt_credentials() -> tuple[str, str, str]:
     return callsign, password, qth
 
 
+def resolve_credentials(args: argparse.Namespace) -> tuple[str, str, str]:
+    """Get credentials from flags/stdin or fall back to interactive prompts.
+
+    ``--password-stdin`` makes the run fully non-interactive: ``--callsign`` is
+    then required and the QTH nickname is optional (no prompt).
+    """
+    if args.password_stdin:
+        callsign = (args.callsign or "").strip()
+        if not callsign:
+            sys.exit("--callsign is required with --password-stdin.")
+        password = sys.stdin.readline().rstrip("\n")
+        if not password:
+            sys.exit("Password is required (read from stdin).")
+        return callsign, password, (args.qth or "").strip()
+
+    callsign = (args.callsign or "").strip() or input("Callsign: ").strip()
+    if not callsign:
+        sys.exit("Callsign is required.")
+    password = getpass.getpass("Password: ")
+    if not password:
+        sys.exit("Password is required.")
+    if args.qth is not None:
+        qth = args.qth.strip()
+    else:
+        qth = input("QTH Nickname (optional, Enter to skip): ").strip()
+    return callsign, password, qth
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Download eQSL.cc card images for a QSO date range."
@@ -174,10 +202,43 @@ def parse_args() -> argparse.Namespace:
         metavar="N",
         help=f"Processes for local image validation (default: {DEFAULT_SCAN_WORKERS})",
     )
+    p.add_argument(
+        "--callsign",
+        metavar="CALL",
+        help="eQSL callsign (default: prompt). Required with --password-stdin.",
+    )
+    p.add_argument(
+        "--qth",
+        metavar="NAME",
+        help="QTH nickname (optional; no prompt when given).",
+    )
+    p.add_argument(
+        "--password-stdin",
+        action="store_true",
+        help="Read the password from the first line of stdin (non-interactive).",
+    )
+    p.add_argument(
+        "--retries",
+        type=int,
+        default=2,
+        metavar="N",
+        help="Attempts per card when GeteQSL throttles or returns no image (default: 2)",
+    )
+    p.add_argument(
+        "--delay",
+        type=float,
+        default=float(GET_DELAY_SEC),
+        metavar="SECONDS",
+        help=f"Delay between GeteQSL calls in seconds (default: {GET_DELAY_SEC})",
+    )
     args = p.parse_args()
 
     if args.workers < 1:
         p.error("--workers must be >= 1")
+    if args.retries < 1:
+        p.error("--retries must be >= 1")
+    if args.delay < 0:
+        p.error("--delay must be >= 0")
 
     if args.year is not None:
         if args.date_from or args.date_to:
@@ -249,9 +310,13 @@ def _download_one(
     qso: QSO,
     path: Path,
     log: Logger,
+    max_attempts: int = 2,
 ) -> tuple[bool, str]:
     try:
-        ok, msg = download_card(session, username, password, qso, path, log=log)
+        ok, msg = download_card(
+            session, username, password, qso, path,
+            log=log, max_attempts=max_attempts,
+        )
     except requests.RequestException as exc:
         return False, str(exc)
 
@@ -301,7 +366,7 @@ def main() -> int:
 
         assert args.from_date is not None and args.to_date is not None
 
-        username, password, qth = prompt_credentials()
+        username, password, qth = resolve_credentials(args)
 
         session = make_session()
 
@@ -388,9 +453,11 @@ def main() -> int:
 
         for i, (name, qso) in enumerate(to_fetch, start=1):
             left = pending - i
-            eta = format_eta(left) if left else "0s"
+            eta = format_eta(left, args.delay) if left else "0s"
             dl_bar.update(i - 1, f"ETA {eta} | {name}")
-            ok, msg = _download_one(session, username, password, qso, dest / name, log)
+            ok, msg = _download_one(
+                session, username, password, qso, dest / name, log, args.retries
+            )
             if ok:
                 downloaded += 1
             else:
@@ -399,10 +466,10 @@ def main() -> int:
             dl_bar.update(
                 i,
                 f"ok={downloaded} fail={len(failed_items)} "
-                f"ETA {format_eta(pending - i)} | {name}",
+                f"ETA {format_eta(pending - i, args.delay)} | {name}",
             )
             if i < pending:
-                time.sleep(GET_DELAY_SEC)
+                time.sleep(args.delay)
         dl_bar.finish(f"ok={downloaded} fail={len(failed_items)}")
 
         if failed_items:
@@ -412,7 +479,7 @@ def main() -> int:
             for i, (name, qso, _msg) in enumerate(failed_items, start=1):
                 retry_bar.update(i - 1, f"retry | {name}")
                 ok, msg = _download_one(
-                    session, username, password, qso, dest / name, log
+                    session, username, password, qso, dest / name, log, args.retries
                 )
                 if ok:
                     downloaded += 1
@@ -423,7 +490,7 @@ def main() -> int:
                     i, f"ok={downloaded} fail={len(still_failed)} | {name}"
                 )
                 if i < len(failed_items):
-                    time.sleep(GET_DELAY_SEC)
+                    time.sleep(args.delay)
             retry_bar.finish(f"ok={downloaded} fail={len(still_failed)}")
             failed_items = still_failed
 

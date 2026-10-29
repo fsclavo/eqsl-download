@@ -110,7 +110,7 @@ def test_write_failures_lists_names(tmp_path):
 
 
 def test_download_one_flags_invalid_image(monkeypatch, tmp_path):
-    def fake_download(session, username, password, qso, path, log=None):
+    def fake_download(session, username, password, qso, path, log=None, **kwargs):
         path.write_bytes(b"broken")
         return True, "ok"
 
