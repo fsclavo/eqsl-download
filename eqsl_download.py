@@ -49,11 +49,12 @@ DEFAULT_DEST = SCRIPT_DIR
 class ProgressBar:
     """Single-line progress bar (stdlib), similar to pip's style."""
 
-    def __init__(self, total: int, width: int = 36) -> None:
+    def __init__(self, total: int, width: int = 36, enabled: bool = True) -> None:
         self.total = max(int(total), 0)
         self.width = width
         self.current = 0
         self._last_len = 0
+        self.enabled = enabled
 
     def _render(self, current: int, suffix: str = "") -> str:
         total = self.total if self.total > 0 else 1
@@ -75,6 +76,8 @@ class ProgressBar:
 
     def update(self, current: int, suffix: str = "") -> None:
         self.current = current
+        if not self.enabled:
+            return
         line = self._render(current, suffix)
         pad = max(self._last_len - len(line), 0)
         sys.stdout.write("\r" + line + (" " * pad))
@@ -83,12 +86,17 @@ class ProgressBar:
 
     def note(self, message: str) -> None:
         """Print a message on its own line (clears the bar line first)."""
+        if not self.enabled:
+            print(f"  {message}")
+            return
         sys.stdout.write("\r" + (" " * self._last_len) + "\r")
         print(f"  {message}")
         self._last_len = 0
         sys.stdout.flush()
 
     def finish(self, suffix: str = "") -> None:
+        if not self.enabled:
+            return
         if self.total > 0:
             self.update(self.total, suffix)
         else:
@@ -99,20 +107,34 @@ class ProgressBar:
 
 
 class Logger:
-    """Console logger that optionally mirrors every line to a file."""
+    """Console logger that optionally mirrors every line to a file.
 
-    def __init__(self, path: Optional[Path] = None) -> None:
+    With ``quiet`` only ``summary()`` lines reach the console (errors are
+    printed separately by the caller); the log file still gets everything.
+    """
+
+    def __init__(self, path: Optional[Path] = None, quiet: bool = False) -> None:
         self._fh = None
+        self.quiet = quiet
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)
             self._fh = open(path, "a", encoding="utf-8")
 
-    def __call__(self, message: str = "") -> None:
-        print(message)
+    def _write(self, message: str) -> None:
         if self._fh is not None:
             stamp = datetime.now().isoformat(timespec="seconds")
             self._fh.write(f"{stamp} {message}\n")
             self._fh.flush()
+
+    def __call__(self, message: str = "") -> None:
+        if not self.quiet:
+            print(message)
+        self._write(message)
+
+    def summary(self, message: str = "") -> None:
+        """Always print (even in quiet mode) and mirror to the log file."""
+        print(message)
+        self._write(message)
 
     def close(self) -> None:
         if self._fh is not None:
@@ -207,6 +229,11 @@ def parse_args() -> argparse.Namespace:
         help="Append a timestamped log of the run to PATH.",
     )
     p.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress progress bars and step messages (errors and the final summary still print).",
+    )
+    p.add_argument(
         "--workers",
         type=int,
         default=DEFAULT_SCAN_WORKERS,
@@ -295,11 +322,11 @@ def run_validate_only(args: argparse.Namespace, log: Logger) -> int:
 
     if not paths:
         log("  no .jpg files to validate")
-        log("Done. validate_only ok=0 corrupt=0 total=0")
+        log.summary("Done. validate_only ok=0 corrupt=0 total=0")
         return 0
 
     log(f"  validating images (JPEG/PNG, {args.workers} processes) ...")
-    bar = ProgressBar(len(paths))
+    bar = ProgressBar(len(paths), enabled=not args.quiet)
     ok, corrupt, corrupt_names = validate_local_paths(
         paths, args.workers, progress=lambda d, t, s: bar.update(d, s)
     )
@@ -310,7 +337,7 @@ def run_validate_only(args: argparse.Namespace, log: Logger) -> int:
         for name in sorted(corrupt_names):
             log(f"    {name}")
 
-    log(f"Done. validate_only ok={ok} corrupt={corrupt} total={len(paths)}")
+    log.summary(f"Done. validate_only ok={ok} corrupt={corrupt} total={len(paths)}")
     return 1 if corrupt else 0
 
 
@@ -369,7 +396,7 @@ def _write_failures(
 def main() -> int:
     args = parse_args()
     dest: Path = args.dest
-    log = Logger(args.log_file)
+    log = Logger(args.log_file, quiet=args.quiet)
 
     try:
         if args.validate_only:
@@ -382,7 +409,7 @@ def main() -> int:
         session = make_session()
 
         log(f"[1/4] Downloading ADIF ({args.from_date} .. {args.to_date})")
-        bar = ProgressBar(3)
+        bar = ProgressBar(3, enabled=not args.quiet)
         try:
             adif_text = fetch_inbox_adif(
                 session,
@@ -404,7 +431,7 @@ def main() -> int:
         log(f"  records parsed: {len(qsos)}")
 
         if not qsos:
-            log("Nothing to download.")
+            log.summary("Nothing to download.")
             return 0
 
         by_name, collisions = build_by_name(qsos, username)
@@ -425,7 +452,7 @@ def main() -> int:
         else:
             log(f"[3/4] Scanning local folder ({dest.name}/) ...")
             log(f"  validating images (JPEG/PNG, {args.workers} processes) ...")
-            scan_bar = ProgressBar(total)
+            scan_bar = ProgressBar(total, enabled=not args.quiet)
             (
                 skipped,
                 corrupt,
@@ -452,7 +479,7 @@ def main() -> int:
             log("[dry-run] Nothing will be downloaded.")
             for name, _qso in to_fetch:
                 log(f"  pending: {name}")
-            log(f"[dry-run] pending={len(to_fetch)} total_unique={total}")
+            log.summary(f"[dry-run] pending={len(to_fetch)} total_unique={total}")
             return 0
 
         pending = len(to_fetch)
@@ -461,14 +488,14 @@ def main() -> int:
 
         if pending == 0:
             log("[4/4] Nothing pending to download.")
-            log(
+            log.summary(
                 f"Done. downloaded=0 skipped={skipped} corrupt={corrupt} "
                 f"failed=0 total_unique={total}"
             )
             return 0
 
         log(f"[4/4] Downloading pending cards ({pending}) ...")
-        dl_bar = ProgressBar(pending)
+        dl_bar = ProgressBar(pending, enabled=not args.quiet)
 
         for i, (name, qso) in enumerate(to_fetch, start=1):
             left = pending - i
@@ -493,7 +520,7 @@ def main() -> int:
 
         if failed_items:
             log(f"Retrying {len(failed_items)} failed download(s) ...")
-            retry_bar = ProgressBar(len(failed_items))
+            retry_bar = ProgressBar(len(failed_items), enabled=not args.quiet)
             still_failed: list[tuple[str, QSO, str]] = []
             for i, (name, qso, _msg) in enumerate(failed_items, start=1):
                 retry_bar.update(i - 1, f"retry | {name}")
@@ -515,7 +542,7 @@ def main() -> int:
 
         failed = len(failed_items)
         _write_failures(dest, failed_items, log)
-        log(
+        log.summary(
             f"Done. downloaded={downloaded} skipped={skipped} "
             f"corrupt_found={corrupt} failed={failed} total_unique={total}"
         )

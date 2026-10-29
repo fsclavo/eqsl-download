@@ -119,3 +119,26 @@ def test_validate_worker_uses_date_range(monkeypatch, tmp_path):
     finally:
         root.destroy()
 
+
+
+def test_format_summary_download_and_validate():
+    download = eqsl_gui.format_summary(
+        {
+            "kind": "download",
+            "downloaded": 2,
+            "skipped": 1,
+            "corrupt": 0,
+            "failed": 1,
+            "total": 4,
+            "dest": "/tmp/cards",
+        }
+    )
+    assert "Downloaded: 2" in download
+    assert "Failed: 1" in download
+    assert "/tmp/cards" in download
+
+    validate = eqsl_gui.format_summary(
+        {"kind": "validate", "ok": 3, "corrupt": 1, "total": 4, "dest": "/tmp/x"}
+    )
+    assert "Valid: 3" in validate
+    assert "Corrupt: 1" in validate

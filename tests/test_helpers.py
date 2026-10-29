@@ -136,3 +136,28 @@ def test_download_one_wraps_request_exception(monkeypatch, tmp_path):
     )
     assert ok is False
     assert "boom" in msg
+
+
+def test_logger_quiet_suppresses_but_summary_prints(tmp_path, capsys):
+    logfile = tmp_path / "run.log"
+    log = eqsl_download.Logger(logfile, quiet=True)
+    log("step message")
+    log.summary("Done. final")
+    log.close()
+
+    out = capsys.readouterr().out
+    assert "step message" not in out
+    assert "Done. final" in out
+    text = logfile.read_text(encoding="utf-8")
+    assert "step message" in text
+    assert "Done. final" in text
+
+
+def test_progress_bar_disabled_prints_notes_only(capsys):
+    bar = eqsl_download.ProgressBar(5, enabled=False)
+    bar.update(2, "working")
+    bar.note("FAILED something")
+    bar.finish("done")
+    out = capsys.readouterr().out
+    assert "FAILED something" in out
+    assert "━" not in out

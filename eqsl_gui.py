@@ -12,6 +12,7 @@ import json
 import multiprocessing
 import os
 import queue
+import subprocess
 import sys
 import threading
 import time
@@ -123,6 +124,41 @@ def _write_failures(dest: Path, failed: list[tuple[str, QSO, str]]) -> Optional[
         return failures_file
     except OSError:
         return None
+
+
+def format_summary(summary: dict) -> str:
+    """Human-readable end-of-run summary for the GUI dialog."""
+    dest = summary.get("dest", "")
+    if summary.get("kind") == "validate":
+        return (
+            "Validation finished.\n\n"
+            f"Valid: {summary.get('ok', 0)}\n"
+            f"Corrupt: {summary.get('corrupt', 0)}\n"
+            f"Total: {summary.get('total', 0)}\n\n"
+            f"Folder:\n{dest}"
+        )
+    return (
+        "Download finished.\n\n"
+        f"Downloaded: {summary.get('downloaded', 0)}\n"
+        f"Skipped (already valid): {summary.get('skipped', 0)}\n"
+        f"Corrupt found: {summary.get('corrupt', 0)}\n"
+        f"Failed: {summary.get('failed', 0)}\n"
+        f"Total unique: {summary.get('total', 0)}\n\n"
+        f"Folder:\n{dest}"
+    )
+
+
+def open_path(path: Path) -> None:
+    """Open a folder in the platform file manager (best effort)."""
+    try:
+        if os.name == "nt":
+            os.startfile(str(path))  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(path)])
+        else:
+            subprocess.Popen(["xdg-open", str(path)])
+    except OSError:
+        pass
 
 
 class EQSLCardGUI:
@@ -241,6 +277,9 @@ class EQSLCardGUI:
         ttk.Button(dest, text="Choose…", command=self._choose_dest).grid(
             row=0, column=1, padx=(8, 0)
         )
+        ttk.Button(dest, text="Open", command=self._open_dest).grid(
+            row=0, column=2, padx=(8, 0)
+        )
 
         # ---- Actions ----
         actions = ttk.Frame(outer)
@@ -358,6 +397,13 @@ class EQSLCardGUI:
         if chosen:
             self.dest_var.set(chosen)
 
+    def _open_dest(self) -> None:
+        dest = Path(self.dest_var.get().strip() or _default_dest()).expanduser()
+        if dest.is_dir():
+            open_path(dest)
+        else:
+            messagebox.showerror(APP_NAME, f"The folder does not exist:\n{dest}")
+
     # -------------------------------------------------------------- helpers
     def _log(self, message: str) -> None:
         self.log_text.configure(state="normal")
@@ -464,7 +510,12 @@ class EQSLCardGUI:
             paths = list_local_jpgs(dest, dates[0], dates[1])
             self._emit("log", f".jpg files in range: {len(paths)}")
             if not paths:
-                self._emit("done", "Validation: no files to check in the selected range.")
+                self._emit(
+                    "done",
+                    "Validation: no files to check in the selected range.",
+                    {"kind": "validate", "ok": 0, "corrupt": 0, "total": 0,
+                     "dest": str(dest)},
+                )
                 return
             ok, corrupt, corrupt_names = validate_local_paths(
                 paths,
@@ -476,6 +527,8 @@ class EQSLCardGUI:
             self._emit(
                 "done",
                 f"Validation finished — ok={ok} corrupt={corrupt} total={len(paths)}",
+                {"kind": "validate", "ok": ok, "corrupt": corrupt,
+                 "total": len(paths), "dest": str(dest)},
             )
         except Exception as exc:  # noqa: BLE001 - surface any error to the user
             self._emit("error", f"Validation error: {exc}")
@@ -550,7 +603,12 @@ class EQSLCardGUI:
             qsos = parse_adif(adif_text)
             self._emit("log", f"Records parsed: {len(qsos)}")
             if not qsos:
-                self._emit("done", "No QSOs in the selected range.")
+                self._emit(
+                    "done",
+                    "No QSOs in the selected range.",
+                    {"kind": "download", "downloaded": 0, "skipped": 0,
+                     "corrupt": 0, "failed": 0, "total": 0, "dest": str(dest)},
+                )
                 return
 
             by_name, collisions = build_by_name(qsos, callsign)
@@ -578,7 +636,13 @@ class EQSLCardGUI:
             )
 
             if not to_fetch:
-                self._emit("done", "Nothing pending: everything is downloaded and valid.")
+                self._emit(
+                    "done",
+                    "Nothing pending: everything is downloaded and valid.",
+                    {"kind": "download", "downloaded": 0, "skipped": skipped,
+                     "corrupt": corrupt, "failed": 0, "total": total,
+                     "dest": str(dest)},
+                )
                 return
 
             downloaded, failed = self._download_pass(
@@ -602,6 +666,9 @@ class EQSLCardGUI:
                 "done",
                 f"Download finished — new={downloaded} valid={skipped} "
                 f"failed={len(failed)} total={total}",
+                {"kind": "download", "downloaded": downloaded, "skipped": skipped,
+                 "corrupt": corrupt, "failed": len(failed), "total": total,
+                 "dest": str(dest)},
             )
         except (requests.RequestException, EQSLError) as exc:
             self._emit("error", str(exc))
@@ -638,6 +705,8 @@ class EQSLCardGUI:
                     self.status_var.set(msg[1])
                     self.progress.configure(mode="determinate", value=self.progress["maximum"])
                     self._set_busy(False)
+                    if len(msg) > 2 and isinstance(msg[2], dict):
+                        messagebox.showinfo(APP_NAME, format_summary(msg[2]))
                 elif kind == "error":
                     self._log("ERROR: " + msg[1])
                     self.status_var.set("Error.")

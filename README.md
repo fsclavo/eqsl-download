@@ -39,7 +39,9 @@ range (whole year or a custom range), and the destination folder. It shows a
 progress bar and a live log, and can run a local **validation** pass (honouring
 the selected date range) without logging in. Callsign, QTH, folder, date mode
 and window geometry are remembered between runs in a per-user config file; the
-password is never stored.
+password is never stored. When a run finishes, a summary dialog shows the
+counts, and the **Open** button next to the destination opens that folder in
+your file manager.
 
 The bundled binary can still act as the CLI, e.g.:
 
@@ -91,6 +93,7 @@ On download runs you will be prompted for:
 | `--password-stdin` | Read the password from the first line of stdin (non-interactive) |
 | `--retries N` | Attempts per card on throttle / no-image (default: `2`) |
 | `--delay SECONDS` | Delay between GeteQSL calls (default: `11`) |
+| `--quiet` | Suppress progress bars and step messages (errors + final summary still print) |
 | `--version` | Print the version and exit |
 
 Rules:

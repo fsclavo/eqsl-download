@@ -262,3 +262,15 @@ def test_only_missing_does_not_redownload_corrupt(monkeypatch, tmp_path, sample_
     assert eqsl_download.main() == 0
     assert calls == []
     assert (tmp_path / _NAME_B).read_bytes() == b"broken"
+
+
+def test_quiet_flag_parse(monkeypatch):
+    args = _parse(monkeypatch, "--year", "2024", "--quiet")
+    assert args.quiet is True
+
+
+def test_quiet_validate_only_prints_summary_only(tmp_path):
+    proc = _run_cli("--validate-only", "--dest", str(tmp_path), "--quiet")
+    assert proc.returncode == 0
+    assert "Done. validate_only" in proc.stdout
+    assert "files to check" not in proc.stdout
