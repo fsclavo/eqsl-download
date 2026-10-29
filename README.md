@@ -18,7 +18,7 @@ It ships in three shapes, all backed by the same core:
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.12+
 - One third-party runtime package: [`requests`](https://pypi.org/project/requests/)
   (`requirements.txt`). Everything else is the standard library.
 - Tkinter for the GUI (usually packaged with Python; on Debian/Ubuntu:
