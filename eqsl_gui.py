@@ -319,11 +319,17 @@ class EQSLCardGUI:
             background="#111111", foreground="#dddddd", insertbackground="#dddddd",
         )
         self.log_text.grid(row=0, column=0, sticky="nsew")
-        scroll_y = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
-        scroll_y.grid(row=0, column=1, sticky="ns")
-        scroll_x = ttk.Scrollbar(log_frame, orient="horizontal", command=self.log_text.xview)
-        scroll_x.grid(row=0, column=2, sticky="ew")
-        self.log_text.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+        self.log_scroll_y = ttk.Scrollbar(
+            log_frame, orient="vertical", command=self.log_text.yview
+        )
+        self.log_scroll_y.grid(row=0, column=1, sticky="ns")
+        self.log_scroll_x = ttk.Scrollbar(
+            log_frame, orient="horizontal", command=self.log_text.xview
+        )
+        self.log_scroll_x.grid(row=1, column=0, sticky="ew")
+        self.log_text.configure(
+            yscrollcommand=self.log_scroll_y.set, xscrollcommand=self.log_scroll_x.set
+        )
 
         self._update_date_mode()
 
@@ -349,6 +355,8 @@ class EQSLCardGUI:
                 self.root.geometry(geometry)
             except tk.TclError:
                 pass
+        else:
+            self.root.geometry("820x720")
         self._update_date_mode()
 
     def _current_prefs(self) -> dict:

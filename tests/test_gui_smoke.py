@@ -344,3 +344,13 @@ def test_drain_queue_shows_summary(monkeypatch, gui_app):
     app._drain_queue()
     assert "args" in shown
     assert app.busy is False
+
+
+def test_log_scrollbars_layout(gui_app):
+    app, _root = gui_app
+    info_x = app.log_scroll_x.grid_info()
+    info_y = app.log_scroll_y.grid_info()
+    assert int(info_x["row"]) == 1
+    assert int(info_x["column"]) == 0
+    assert int(info_y["row"]) == 0
+    assert int(info_y["column"]) == 1
