@@ -354,3 +354,25 @@ def test_log_scrollbars_layout(gui_app):
     assert int(info_x["column"]) == 0
     assert int(info_y["row"]) == 0
     assert int(info_y["column"]) == 1
+
+
+def test_validate_worker_logs_extension_mismatch(
+    monkeypatch, gui_app, tmp_path, jpeg_bytes
+):
+    app, _root = gui_app
+    path = tmp_path / "LU1-20240101_0000-X-20m-FT8.png"
+    path.write_bytes(jpeg_bytes)
+    monkeypatch.setattr(
+        eqsl_gui, "list_local_images", lambda dest, d_from, d_to: [path]
+    )
+    monkeypatch.setattr(
+        eqsl_gui, "validate_local_paths", lambda paths, workers, progress=None: (1, 0, [])
+    )
+    app._validate_worker(
+        tmp_path, (eqsl_gui.date(2024, 1, 1), eqsl_gui.date(2024, 12, 31))
+    )
+    messages = _drain(app)
+    assert any(
+        m[0] == "log" and "EXTENSION" in m[1] and "-> .jpg" in m[1]
+        for m in messages
+    )

@@ -131,3 +131,12 @@ def test_list_local_images_includes_png(write_file, png_bytes):
     dest = write_file(base + ".png", png_bytes).parent
     names = [p.name for p in list_local_images(dest)]
     assert names == [base + ".png"]
+
+
+def test_classify_and_list_support_jpeg_extension(write_file, jpeg_bytes):
+    base = NAME_A[:-4]
+    path = write_file(base + ".jpeg", jpeg_bytes)
+    assert [p.name for p in list_local_images(path.parent)] == [base + ".jpeg"]
+    status, name, _ = classify_local_file(base, _qso("W1AW", "20240315"), path.parent)
+    assert status == "ok"
+    assert name == base

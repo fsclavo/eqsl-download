@@ -285,3 +285,11 @@ def test_normalize_extensions_cli(tmp_path, png_bytes):
     assert proc.returncode == 0
     assert "renamed=1" in proc.stdout
     assert (tmp_path / "LU1-20240101_0000-X-20m-FT8.png").exists()
+
+
+def test_validate_only_reports_extension_mismatch(tmp_path, jpeg_bytes):
+    (tmp_path / "LU1-20240101_0000-X-20m-FT8.png").write_bytes(jpeg_bytes)
+    proc = _run_cli("--validate-only", "--dest", str(tmp_path))
+    assert proc.returncode == 0
+    assert "extension mismatches" in proc.stdout
+    assert "-> .jpg" in proc.stdout

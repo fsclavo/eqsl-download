@@ -31,6 +31,7 @@ from eqsl_core import (
     QSO,
     build_by_name,
     download_card,
+    extension_mismatch,
     fetch_inbox_adif,
     get_version,
     list_local_images,
@@ -530,6 +531,16 @@ class EQSLCardGUI:
             )
             for name in sorted(corrupt_names):
                 self._emit("log", f"  CORRUPT: {name}")
+            mismatches = [
+                (p.name, want)
+                for p in paths
+                if (want := extension_mismatch(p)) is not None
+            ]
+            for name, want in mismatches:
+                self._emit(
+                    "log",
+                    f"  EXTENSION: {name} -> {want} (use --normalize-extensions)",
+                )
             self._emit(
                 "done",
                 f"Validation finished — ok={ok} corrupt={corrupt} total={len(paths)}",

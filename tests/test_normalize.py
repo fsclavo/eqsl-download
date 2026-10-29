@@ -57,3 +57,18 @@ def test_ignores_files_that_do_not_match_the_pattern(tmp_path, png_bytes):
     stats = normalize_extensions(tmp_path)
 
     assert stats["checked"] == 0
+
+
+def test_jpeg_extension_is_accepted(tmp_path, jpeg_bytes):
+    (tmp_path / (BASE + ".jpeg")).write_bytes(jpeg_bytes)
+    stats = normalize_extensions(tmp_path)
+    assert stats["ok"] == 1
+    assert stats["renamed"] == 0
+    assert (tmp_path / (BASE + ".jpeg")).exists()
+
+
+def test_png_with_jpeg_content_is_renamed_to_jpg(tmp_path, jpeg_bytes):
+    (tmp_path / (BASE + ".png")).write_bytes(jpeg_bytes)
+    stats = normalize_extensions(tmp_path)
+    assert stats["renamed"] == 1
+    assert (tmp_path / (BASE + ".jpg")).exists()

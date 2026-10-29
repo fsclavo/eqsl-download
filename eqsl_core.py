@@ -13,6 +13,7 @@ import os
 import re
 import struct
 import sys
+import zlib
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -64,8 +65,10 @@ HREF_ADI_RE = re.compile(
     re.IGNORECASE,
 )
 # MYCALL-YYYYMMDD_HHMM-THEIRCALL-band-MODE.<jpg|png>
-IMAGE_EXTENSIONS = (".jpg", ".png")
+IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png")
 IMAGE_EXT_BY_KIND = {"jpeg": ".jpg", "png": ".png"}
+# Extensions that are acceptable on disk for a given content kind.
+ALLOWED_EXT_BY_KIND = {"jpeg": (".jpg", ".jpeg"), "png": (".png",)}
 
 LOCAL_IMAGE_DATE_RE = re.compile(
     r"^[^-]+-(\d{8})_\d{4}-.+\.(?:jpe?g|png)$",
@@ -248,11 +251,47 @@ def _is_valid_jpeg_bytes(data: bytes) -> bool:
 
 
 def _is_valid_png_bytes(data: bytes) -> bool:
-    """Lightweight PNG check: signature + IEND chunk present."""
-    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+    """Structural PNG check: signature, chunk CRCs, IHDR first, IDAT + IEND.
+
+    Requires the first chunk to be a 13-byte IHDR, at least one IDAT, and a
+    zero-length IEND; every chunk CRC is verified. Trailing bytes after IEND are
+    allowed (some encoders/servers pad the file), mirroring the JPEG check.
+    """
+    signature = b"\x89PNG\r\n\x1a\n"
+    if len(data) < 45 or data[:8] != signature:
         return False
-    # IEND is the last chunk: length=0, type=IEND, + CRC
-    return b"IEND" in data[-16:]
+
+    pos = 8
+    n = len(data)
+    first = True
+    saw_idat = False
+    while pos + 12 <= n:
+        length = struct.unpack(">I", data[pos : pos + 4])[0]
+        ctype = data[pos + 4 : pos + 8]
+        data_start = pos + 8
+        data_end = data_start + length
+        crc_end = data_end + 4
+        if crc_end > n:
+            return False
+
+        chunk_data = data[data_start:data_end]
+        expected_crc = struct.unpack(">I", data[data_end:crc_end])[0]
+        actual_crc = zlib.crc32(ctype + chunk_data) & 0xFFFFFFFF
+        if actual_crc != expected_crc:
+            return False
+
+        if first:
+            if ctype != b"IHDR" or length != 13:
+                return False
+            first = False
+        if ctype == b"IDAT":
+            saw_idat = True
+        if ctype == b"IEND":
+            return length == 0 and saw_idat
+
+        pos = crc_end
+
+    return False
 
 
 def detect_image_kind(data: bytes) -> str:
@@ -300,6 +339,23 @@ is_valid_jpeg = is_valid_image
 
 def image_extension(kind: str) -> Optional[str]:
     """Map a detected content kind to the canonical file extension."""
+    return IMAGE_EXT_BY_KIND.get(kind)
+
+
+def extension_mismatch(path: Path) -> Optional[str]:
+    """Return the canonical extension if the file's suffix contradicts content.
+
+    Returns None when the extension is acceptable (``.jpg``/``.jpeg`` for JPEG,
+    ``.png`` for PNG) or when the content kind is unknown.
+    """
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    kind = detect_image_kind(data)
+    allowed = ALLOWED_EXT_BY_KIND.get(kind)
+    if allowed is None or path.suffix.lower() in allowed:
+        return None
     return IMAGE_EXT_BY_KIND.get(kind)
 
 
@@ -458,7 +514,7 @@ def normalize_extensions(
         if want is None:
             stats["unsupported"] += 1
             continue
-        if path.suffix.lower() == want:
+        if path.suffix.lower() in ALLOWED_EXT_BY_KIND.get(kind, ()):
             stats["ok"] += 1
             continue
         if not _is_valid_image_bytes(data):

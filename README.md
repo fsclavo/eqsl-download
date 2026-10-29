@@ -135,8 +135,11 @@ the same file — the tool keeps one card and prints a collision warning.
   `BAND`, `MODE` (+ optional `SUBMODE`); JT65/JT9 submodes normalize to the
   major mode.
 - **Local classification:** `ok` (valid → skip), `corrupt` (re-download),
-  `missing` (download). Validation accepts **JPEG** (SOI → SOS → EOI) and
-  **PNG** (signature + IEND); eQSL often serves PNG behind a `.jpg` name.
+  `missing` (download). Validation is content-based: **JPEG** (SOI → SOS →
+  EOI, trailing padding allowed) and **PNG** (signature, per-chunk **CRC**
+  checks, IHDR first, `IDAT` + `IEND`). `.jpg`, `.jpeg` and `.png` are
+  recognised; `--validate-only` also warns when the extension does not match
+  the real content (fix with `--normalize-extensions`).
 - **Card download:** `GET GeteQSL.cfm`, scrape the ColdFusion image servlet URL,
   save it. Delay **11 s** between calls (~5.4/min); on *"Throttling invoked"*
   wait **20 s** and retry. Post-download files failing validation are deleted.

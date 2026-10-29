@@ -30,6 +30,7 @@ from eqsl_core import (
     QSO,
     build_by_name,
     download_card,
+    extension_mismatch,
     fetch_inbox_adif,
     format_eta,
     get_version,
@@ -330,7 +331,7 @@ def run_validate_only(args: argparse.Namespace, log: Logger) -> int:
 
     if not paths:
         log("  no image files to validate")
-        log.summary("Done. validate_only ok=0 corrupt=0 total=0")
+        log.summary("Done. validate_only ok=0 corrupt=0 mismatches=0 total=0")
         return 0
 
     log(f"  validating images (JPEG/PNG, {args.workers} processes) ...")
@@ -345,7 +346,23 @@ def run_validate_only(args: argparse.Namespace, log: Logger) -> int:
         for name in sorted(corrupt_names):
             log(f"    {name}")
 
-    log.summary(f"Done. validate_only ok={ok} corrupt={corrupt} total={len(paths)}")
+    mismatches = [
+        (path.name, want)
+        for path in paths
+        if (want := extension_mismatch(path)) is not None
+    ]
+    if mismatches:
+        log(
+            f"  extension mismatches ({len(mismatches)}) — "
+            "run --normalize-extensions to fix:"
+        )
+        for name, want in mismatches:
+            log(f"    {name} -> {want}")
+
+    log.summary(
+        f"Done. validate_only ok={ok} corrupt={corrupt} "
+        f"mismatches={len(mismatches)} total={len(paths)}"
+    )
     return 1 if corrupt else 0
 
 

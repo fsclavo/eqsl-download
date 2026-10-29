@@ -7,6 +7,7 @@ from eqsl_core import (
     _is_valid_jpeg_bytes,
     _is_valid_png_bytes,
     detect_image_kind,
+    extension_mismatch,
     image_extension,
     is_valid_jpeg,
 )
@@ -128,3 +129,34 @@ def test_image_extension_mapping():
     assert image_extension("png") == ".png"
     assert image_extension("gif") is None
     assert image_extension("unknown") is None
+
+
+def test_png_rejects_bad_crc(png_bytes):
+    data = bytearray(png_bytes)
+    data[50] ^= 0xFF  # flip a byte inside IDAT data
+    assert _is_valid_png_bytes(bytes(data)) is False
+
+
+def test_png_rejects_truncated_crc(png_bytes):
+    assert _is_valid_png_bytes(png_bytes[:-1]) is False
+
+
+def test_png_allows_trailing_padding(png_bytes):
+    assert _is_valid_png_bytes(png_bytes + b"\x00\x00\x00") is True
+
+
+def test_png_rejects_non_ihdr_first_chunk():
+    import struct
+    import zlib
+
+    ctype = b"XXXX"
+    chunk = struct.pack(">I", 0) + ctype + struct.pack(">I", zlib.crc32(ctype) & 0xFFFFFFFF)
+    data = b"\x89PNG\r\n\x1a\n" + chunk
+    assert _is_valid_png_bytes(data) is False
+
+
+def test_extension_mismatch_detection(write_file, jpeg_bytes, png_bytes):
+    assert extension_mismatch(write_file("a.png", jpeg_bytes)) == ".jpg"
+    assert extension_mismatch(write_file("b.jpeg", jpeg_bytes)) is None
+    assert extension_mismatch(write_file("c.jpg", jpeg_bytes)) is None
+    assert extension_mismatch(write_file("d.jpg", png_bytes)) == ".png"
