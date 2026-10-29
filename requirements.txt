@@ -1,2 +1,2 @@
-# requests 2.33+ requires Python >=3.10; keep <2.33 to support Python 3.9.
-requests>=2.28.0,<2.33
+# requests 2.34+ requires Python >=3.10.
+requests>=2.34.2
