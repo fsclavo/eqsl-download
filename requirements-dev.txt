@@ -4,6 +4,6 @@
 pytest>=9.1.1
 pytest-cov>=7.1.0
 requests-mock>=1.11
-pillow>=9.5
+pillow>=13.0.0
 pyyaml>=6.0.3
 ruff>=0.17.2
