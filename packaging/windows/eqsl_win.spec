@@ -38,7 +38,7 @@ VERSION_INFO = f"""VSVersionInfo(
   kids=[
     StringFileInfo([
       StringTable('040a04b0', [
-        StringStruct('CompanyName', 'fsclavo'),
+        StringStruct('CompanyName', 'LU2EFI (fsclavo)'),
         StringStruct('FileDescription', 'eQSL Card Downloader'),
         StringStruct('FileVersion', '{_ver_str}'),
         StringStruct('InternalName', 'eQSL_Card_Downloader'),

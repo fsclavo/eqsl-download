@@ -13,7 +13,7 @@
 #endif
 
 #define AppName "eQSL Card Downloader"
-#define AppPublisher "fsclavo"
+#define AppPublisher "LU2EFI (fsclavo)"
 #define AppExeName "eQSL_Card_Downloader.exe"
 #define AppId "{{7B2E5B7C-2F8E-4E2C-9A6E-1C4D2B8F3A10}"
 

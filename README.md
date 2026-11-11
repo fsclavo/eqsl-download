@@ -3,6 +3,8 @@
 [![CI](https://github.com/fsclavo/eqsl-download/actions/workflows/ci.yml/badge.svg)](https://github.com/fsclavo/eqsl-download/actions/workflows/ci.yml)
 [![Release](https://github.com/fsclavo/eqsl-download/actions/workflows/release.yml/badge.svg)](https://github.com/fsclavo/eqsl-download/actions/workflows/release.yml)
 
+**Developed by LU2EFI** — amateur radio operator · [QRZ](https://www.qrz.com/db/LU2EFI)
+
 Personal toolkit that downloads [eQSL.cc](https://www.eqsl.cc) QSL card images
 for a QSO date range, using the official **DownloadInBox** and **GeteQSL**
 endpoints. It skips valid local files, re-downloads corrupt ones, and
@@ -251,6 +253,17 @@ bash packaging/linux/build_appimage.sh
   limits; large backlogs take ~11 s per card.
 - The Windows installer must be built on Windows (PyInstaller cannot
   cross-compile); use the CI workflow or a Windows machine.
+
+## Author
+
+Developed and maintained by **LU2EFI** ([fsclavo](https://github.com/fsclavo)),
+an amateur radio operator. Shared in case it helps other hams keep their
+eQSL.cc archive in order.
+
+- GitHub: [@fsclavo](https://github.com/fsclavo)
+- QRZ: [LU2EFI](https://www.qrz.com/db/LU2EFI)
+
+73 de LU2EFI.
 
 ## License / use
 
